@@ -184,7 +184,7 @@ let actually_expand ~loc sql_variant query =
   build_process_rows ~loc sql_variant
   >>= fun process_rows ->
   Query.parse query
-  >>= fun {query; in_params; out_params} ->
+  >>= fun {sql; in_params; out_params; list_params = _} ->
   Query.remove_duplicates in_params
   >>= fun unique_in_params ->
   (* Note that in the expr fragment below we disable warning 26 (about unused variables)
@@ -193,7 +193,7 @@ let actually_expand ~loc sql_variant query =
   let expr =
     [%expr
       let open IO_result in
-      let query = [%e Buildef.estring ~loc query] in
+      let query = [%e Buildef.estring ~loc sql] in
       let params =
         [%e Buildef.(pexp_array ~loc @@ List.map (build_in_param ~loc) in_params)]
       in

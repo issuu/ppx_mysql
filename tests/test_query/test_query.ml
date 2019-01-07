@@ -10,16 +10,28 @@ type param = Query.param =
   ; to_string : string * string }
 [@@deriving eq, show]
 
+type list_params = Query.list_params =
+  { sql : string
+  ; loc : int
+  ; params : param list }
+[@@deriving eq, show]
+
 type parsed_query = Query.parsed_query =
-  { query : string
+  { sql : string
   ; in_params : param list
-  ; out_params : param list }
+  ; out_params : param list
+  ; list_params : list_params option }
 [@@deriving eq, show]
 
 type parse_error =
   [ `Bad_identifier of string
   | `Unknown_type_spec of string
+  | `Nested_list
+  | `Optional_list
+  | `Out_params_in_list
+  | `Unterminated_list
   | `Unterminated_string
+  | `Unterminated_bracket
   | `Escape_at_end ]
 [@@deriving eq, show]
 
@@ -39,24 +51,26 @@ let conflicting_spec_mod = Alcotest.testable pp_conflicting_spec equal_conflicti
 
 let query_0 = "SELECT true"
 
-let parsed_query_0 = {query = "SELECT true"; in_params = []; out_params = []}
+let parsed_query_0 =
+  {sql = "SELECT true"; in_params = []; out_params = []; list_params = None}
 
 let query_out1 = "SELECT @int64{id} FROM users"
 
 let parsed_query_out1 =
-  { query = "SELECT id FROM users"
+  { sql = "SELECT id FROM users"
   ; in_params = []
   ; out_params =
       [ { typ = "int64"
         ; opt = false
         ; name = "id"
         ; of_string = "Ppx_mysql_runtime", "int64_of_string"
-        ; to_string = "Int64", "to_string" } ] }
+        ; to_string = "Int64", "to_string" } ]
+  ; list_params = None }
 
 let query_out2 = "SELECT @int64{id}, @string{name} FROM users"
 
 let parsed_query_out2 =
-  { query = "SELECT id, name FROM users"
+  { sql = "SELECT id, name FROM users"
   ; in_params = []
   ; out_params =
       [ { typ = "int64"
@@ -68,12 +82,13 @@ let parsed_query_out2 =
         ; opt = false
         ; name = "name"
         ; of_string = "Ppx_mysql_runtime", "identity"
-        ; to_string = "Ppx_mysql_runtime", "identity" } ] }
+        ; to_string = "Ppx_mysql_runtime", "identity" } ]
+  ; list_params = None }
 
 let query_out3 = "SELECT @int64{id}, @string{name}, @string?{phone} FROM users"
 
 let parsed_query_out3 =
-  { query = "SELECT id, name, phone FROM users"
+  { sql = "SELECT id, name, phone FROM users"
   ; in_params = []
   ; out_params =
       [ { typ = "int64"
@@ -90,24 +105,26 @@ let parsed_query_out3 =
         ; opt = true
         ; name = "phone"
         ; of_string = "Ppx_mysql_runtime", "identity"
-        ; to_string = "Ppx_mysql_runtime", "identity" } ] }
+        ; to_string = "Ppx_mysql_runtime", "identity" } ]
+  ; list_params = None }
 
 let query_in1 = "INSERT LO users (id) VALUES (%int64{id})"
 
 let parsed_query_in1 =
-  { query = "INSERT LO users (id) VALUES (?)"
+  { sql = "INSERT LO users (id) VALUES (?)"
   ; in_params =
       [ { typ = "int64"
         ; opt = false
         ; name = "id"
         ; of_string = "Ppx_mysql_runtime", "int64_of_string"
         ; to_string = "Int64", "to_string" } ]
-  ; out_params = [] }
+  ; out_params = []
+  ; list_params = None }
 
 let query_in2 = "INSERT LO users (id, name) VALUES (%int64{id}, %string{name})"
 
 let parsed_query_in2 =
-  { query = "INSERT LO users (id, name) VALUES (?, ?)"
+  { sql = "INSERT LO users (id, name) VALUES (?, ?)"
   ; in_params =
       [ { typ = "int64"
         ; opt = false
@@ -119,13 +136,14 @@ let parsed_query_in2 =
         ; name = "name"
         ; of_string = "Ppx_mysql_runtime", "identity"
         ; to_string = "Ppx_mysql_runtime", "identity" } ]
-  ; out_params = [] }
+  ; out_params = []
+  ; list_params = None }
 
 let query_in3 =
   "INSERT LO users (id, name, phone) VALUES (%int64{id}, %string{name}, %string?{phone})"
 
 let parsed_query_in3 =
-  { query = "INSERT LO users (id, name, phone) VALUES (?, ?, ?)"
+  { sql = "INSERT LO users (id, name, phone) VALUES (?, ?, ?)"
   ; in_params =
       [ { typ = "int64"
         ; opt = false
@@ -142,14 +160,15 @@ let parsed_query_in3 =
         ; name = "phone"
         ; of_string = "Ppx_mysql_runtime", "identity"
         ; to_string = "Ppx_mysql_runtime", "identity" } ]
-  ; out_params = [] }
+  ; out_params = []
+  ; list_params = None }
 
 let query_inout =
   "SELECT @int64{id}, @string{name}, @string?{phone} FROM users WHERE id = %int64{id} \
    OR name = %string{name} OR PHONE = %string?{phone}"
 
 let parsed_query_inout =
-  { query = "SELECT id, name, phone FROM users WHERE id = ? OR name = ? OR PHONE = ?"
+  { sql = "SELECT id, name, phone FROM users WHERE id = ? OR name = ? OR PHONE = ?"
   ; in_params =
       [ { typ = "int64"
         ; opt = false
@@ -181,14 +200,15 @@ let parsed_query_inout =
         ; opt = true
         ; name = "phone"
         ; of_string = "Ppx_mysql_runtime", "identity"
-        ; to_string = "Ppx_mysql_runtime", "identity" } ] }
+        ; to_string = "Ppx_mysql_runtime", "identity" } ]
+  ; list_params = None }
 
 let query_quoted0 =
   "SELECT @int64{id}, @string{name} FROM users WHERE id = %int64{id} OR NAME = 'Hello \
    @int64{name} world'"
 
 let parsed_query_quoted0 =
-  { query = "SELECT id, name FROM users WHERE id = ? OR NAME = 'Hello @int64{name} world'"
+  { sql = "SELECT id, name FROM users WHERE id = ? OR NAME = 'Hello @int64{name} world'"
   ; in_params =
       [ { typ = "int64"
         ; opt = false
@@ -205,15 +225,15 @@ let parsed_query_quoted0 =
         ; opt = false
         ; name = "name"
         ; of_string = "Ppx_mysql_runtime", "identity"
-        ; to_string = "Ppx_mysql_runtime", "identity" } ] }
+        ; to_string = "Ppx_mysql_runtime", "identity" } ]
+  ; list_params = None }
 
 let query_quoted1 =
   "SELECT @int64{id}, @string{name} FROM users WHERE id = %int64{id} OR NAME = \"Hello \
    @int64{name} world\""
 
 let parsed_query_quoted1 =
-  { query =
-      "SELECT id, name FROM users WHERE id = ? OR NAME = \"Hello @int64{name} world\""
+  { sql = "SELECT id, name FROM users WHERE id = ? OR NAME = \"Hello @int64{name} world\""
   ; in_params =
       [ { typ = "int64"
         ; opt = false
@@ -230,14 +250,15 @@ let parsed_query_quoted1 =
         ; opt = false
         ; name = "name"
         ; of_string = "Ppx_mysql_runtime", "identity"
-        ; to_string = "Ppx_mysql_runtime", "identity" } ] }
+        ; to_string = "Ppx_mysql_runtime", "identity" } ]
+  ; list_params = None }
 
 let query_quoted2 =
   "SELECT @int64{id}, @string{name} FROM users WHERE id = %int64{id} OR NAME = 'Hello \
    ''@int64{name}'' world'"
 
 let parsed_query_quoted2 =
-  { query =
+  { sql =
       "SELECT id, name FROM users WHERE id = ? OR NAME = 'Hello ''@int64{name}'' world'"
   ; in_params =
       [ { typ = "int64"
@@ -255,14 +276,15 @@ let parsed_query_quoted2 =
         ; opt = false
         ; name = "name"
         ; of_string = "Ppx_mysql_runtime", "identity"
-        ; to_string = "Ppx_mysql_runtime", "identity" } ] }
+        ; to_string = "Ppx_mysql_runtime", "identity" } ]
+  ; list_params = None }
 
 let query_quoted3 =
   "SELECT @int64{id}, @string{name} FROM users WHERE id = %int64{id} OR NAME = \"Hello \
    '@int64{name}' world\""
 
 let parsed_query_quoted3 =
-  { query =
+  { sql =
       "SELECT id, name FROM users WHERE id = ? OR NAME = \"Hello '@int64{name}' world\""
   ; in_params =
       [ { typ = "int64"
@@ -280,7 +302,65 @@ let parsed_query_quoted3 =
         ; opt = false
         ; name = "name"
         ; of_string = "Ppx_mysql_runtime", "identity"
-        ; to_string = "Ppx_mysql_runtime", "identity" } ] }
+        ; to_string = "Ppx_mysql_runtime", "identity" } ]
+  ; list_params = None }
+
+let query_list0 =
+  "SELECT @int{COUNT(*)} FROM users WHERE age > %int{age} AND id IN (%list{%int64{id}})"
+
+let parsed_query_list0 =
+  { sql = "SELECT COUNT(*) FROM users WHERE age > ? AND id IN ()"
+  ; in_params =
+      [ { typ = "int"
+        ; opt = false
+        ; name = "age"
+        ; of_string = "Ppx_mysql_runtime", "int_of_string"
+        ; to_string = "Pervasives", "string_of_int" } ]
+  ; out_params =
+      [ { typ = "int"
+        ; opt = false
+        ; name = "COUNT(*)"
+        ; of_string = "Ppx_mysql_runtime", "int_of_string"
+        ; to_string = "Pervasives", "string_of_int" } ]
+  ; list_params =
+      Some
+        { sql = "?"
+        ; loc = 52
+        ; params =
+            [ { typ = "int64"
+              ; opt = false
+              ; name = "id"
+              ; of_string = "Ppx_mysql_runtime", "int64_of_string"
+              ; to_string = "Int64", "to_string" } ] } }
+
+let query_list1 =
+  "INSERT INTO users (id, name, phone) VALUES %list{(%int{id}, %string{name}, \
+   %string?{phone})}"
+
+let parsed_query_list1 =
+  { sql = "INSERT INTO users (id, name, phone) VALUES "
+  ; in_params = []
+  ; out_params = []
+  ; list_params =
+      Some
+        { sql = "(?, ?, ?)"
+        ; loc = 43
+        ; params =
+            [ { typ = "int"
+              ; opt = false
+              ; name = "id"
+              ; of_string = "Ppx_mysql_runtime", "int_of_string"
+              ; to_string = "Pervasives", "string_of_int" }
+            ; { typ = "string"
+              ; opt = false
+              ; name = "name"
+              ; of_string = "Ppx_mysql_runtime", "identity"
+              ; to_string = "Ppx_mysql_runtime", "identity" }
+            ; { typ = "string"
+              ; opt = true
+              ; name = "phone"
+              ; of_string = "Ppx_mysql_runtime", "identity"
+              ; to_string = "Ppx_mysql_runtime", "identity" } ] } }
 
 let query_bad0 = "SELECT true FROM users WHERE id = %int{ID}"
 
@@ -323,6 +403,8 @@ let test_parse_query () =
   run "query_quoted1" query_quoted1 (Ok parsed_query_quoted1);
   run "query_quoted2" query_quoted2 (Ok parsed_query_quoted2);
   run "query_quoted3" query_quoted3 (Ok parsed_query_quoted3);
+  run "query_list0" query_list0 (Ok parsed_query_list0);
+  run "query_list1" query_list1 (Ok parsed_query_list1);
   run "query_bad0" query_bad0 (Error error_bad0);
   run "query_bad1" query_bad1 (Error error_bad1);
   run "query_bad2" query_bad2 (Error error_bad2);
