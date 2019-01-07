@@ -5,6 +5,18 @@ open Ppx_mysql_runtime.Stdlib
 module Query = Query
 module Buildef = Ast_builder.Default
 
+let take_drop index elems =
+  let rec loop accum index leftovers =
+    match (index, leftovers) with
+    | 0, _ ->
+        List.rev accum, leftovers
+    | i, hd :: tl ->
+        loop (hd :: accum) (i - 1) tl
+    | _, [] ->
+        failwith "take_drop"
+  in
+  loop [] index elems
+
 let rec build_fun_chain ~loc expr = function
   | [] ->
       expr
@@ -184,23 +196,58 @@ let actually_expand ~loc sql_variant query =
   build_process_rows ~loc sql_variant
   >>= fun process_rows ->
   Query.parse query
-  >>= fun {sql; in_params; out_params; list_params = _} ->
+  >>= fun {sql; in_params; out_params; list_params} ->
   Query.remove_duplicates in_params
   >>= fun unique_in_params ->
   (* Note that in the expr fragment below we disable warning 26 (about unused variables)
      for the 'process_out_params' function, since it may indeed be unused if there are
      no output parameters. *)
+  let sql_expr =
+    match list_params with
+    | None ->
+        [%expr
+          IO.return (Ppx_mysql_runtime.Stdlib.Result.Ok [%e Buildef.estring ~loc sql])]
+    | Some { subsql; string_index; _ } ->
+        let subsql_expr = Buildef.estring ~loc subsql in
+        let sql_before = Buildef.estring ~loc @@ String.sub sql 0 string_index in
+        let sql_after =
+          Buildef.estring ~loc @@ String.sub sql string_index (String.length sql - string_index)
+        in
+        [%expr
+          match Ppx_mysql_runtime.Stdlib.List.length elems with
+          | 0 ->
+              IO.return (Ppx_mysql_runtime.Stdlib.Result.Error `Empty_input_list)
+          | n ->
+              let subsqls =
+                Ppx_mysql_runtime.Stdlib.List.init n (fun _ -> [%e subsql_expr])
+              in
+              let patch = Ppx_mysql_runtime.Stdlib.String.concat ", " subsqls in
+              let sql =
+                Ppx_mysql_runtime.Stdlib.String.append
+                  [%e sql_before]
+                  (Ppx_mysql_runtime.Stdlib.String.append patch [%e sql_after])
+              in
+              IO.return (Ppx_mysql_runtime.Stdlib.Result.Ok sql)]
+  in
+  let params_expr =
+    match list_params with
+    | None ->
+      Buildef.pexp_array ~loc @@ List.map (build_in_param ~loc) in_params
+    | Some { param_index; _ } ->
+      let params_before, params_after = take_drop param_index in_params in
+      let params_before = Buildef.pexp_array ~loc @@ List.map (build_in_param ~loc) params_before in
+      let params_after = Buildef.pexp_array ~loc @@ List.map (build_in_param ~loc) params_after in
+      let params_between = Buildef.pexp_array ~loc [] in
+      [%expr Ppx_mysql_runtime.Stdlib.Array.concat [[%e params_before]; [%e params_between]; [%e params_after]]]
+  in
   let expr =
     [%expr
       let open IO_result in
-      let query = [%e Buildef.estring ~loc sql] in
-      let params =
-        [%e Buildef.(pexp_array ~loc @@ List.map (build_in_param ~loc) in_params)]
-      in
-      let[@warning "-26"] process_out_params =
-        [%e build_out_param_processor ~loc out_params]
-      in
-      Prepared.with_stmt dbh query
+      [%e sql_expr]
+      >>= fun sql ->
+      let params = [%e params_expr] in
+      let[@warning "-26"] process_out_params = [%e build_out_param_processor ~loc out_params] in
+      Prepared.with_stmt dbh sql
       @@ fun stmt ->
       Prepared.execute_null stmt params >>= fun stmt_result -> [%e process_rows] ()]
   in

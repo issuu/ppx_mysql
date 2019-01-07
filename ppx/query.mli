@@ -9,7 +9,8 @@ type param =
 
 type list_params =
   { subsql : string
-  ; index : int
+  ; string_index : int
+  ; param_index : int
   ; params : param list }
 
 type parsed_query =
