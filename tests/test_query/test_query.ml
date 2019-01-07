@@ -26,6 +26,8 @@ type parsed_query = Query.parsed_query =
 type parse_error =
   [ `Bad_identifier of string
   | `Unknown_type_spec of string
+  | `Empty_list_params
+  | `Multiple_lists_not_supported
   | `Nested_list
   | `Optional_list
   | `Out_params_in_list
@@ -386,6 +388,43 @@ let query_bad5 = "SELECT true\\"
 
 let error_bad5 = `Escape_at_end
 
+let query_bad6 = "SELECT @int{true FROM users"
+
+let error_bad6 = `Unterminated_bracket
+
+let query_bad7 = "SELECT true FROM users WHERE %int{id"
+
+let error_bad7 = `Unterminated_bracket
+
+let query_list_bad0 = "SELECT true FROM users WHERE id IN (%list?{%int{id}})"
+
+let error_list_bad0 = `Optional_list
+
+let query_list_bad1 = "SELECT true FROM users WHERE id IN (%list{%list{%int{id}}})"
+
+let error_list_bad1 = `Nested_list
+
+let query_list_bad2 = "SELECT true FROM users WHERE id IN (%list{@int{id}}})"
+
+let error_list_bad2 = `Out_params_in_list
+
+let query_list_bad3 = "SELECT true FROM users WHERE id IN (%list{%int{id})"
+
+let error_list_bad3 = `Unterminated_list
+
+let query_list_bad4 = "SELECT @list{*} FROM users"
+
+let error_list_bad4 = `Unknown_type_spec "list"
+
+let query_list_bad5 = "SELECT * FROM users WHERE id IN (%list{})"
+
+let error_list_bad5 = `Empty_list_params
+
+let query_list_bad6 =
+  "SELECT * FROM users WHERE id IN (%list{%int{id}}) AND name IN (%list{%string{name}})"
+
+let error_list_bad6 = `Multiple_lists_not_supported
+
 let test_parse_query () =
   let run desc query expected =
     Alcotest.(
@@ -410,7 +449,16 @@ let test_parse_query () =
   run "query_bad2" query_bad2 (Error error_bad2);
   run "query_bad3" query_bad3 (Error error_bad3);
   run "query_bad4" query_bad4 (Error error_bad4);
-  run "query_bad5" query_bad5 (Error error_bad5)
+  run "query_bad5" query_bad5 (Error error_bad5);
+  run "query_bad6" query_bad6 (Error error_bad6);
+  run "query_bad7" query_bad7 (Error error_bad7);
+  run "query_list_bad0" query_list_bad0 (Error error_list_bad0);
+  run "query_list_bad1" query_list_bad1 (Error error_list_bad1);
+  run "query_list_bad2" query_list_bad2 (Error error_list_bad2);
+  run "query_list_bad3" query_list_bad3 (Error error_list_bad3);
+  run "query_list_bad4" query_list_bad4 (Error error_list_bad4);
+  run "query_list_bad5" query_list_bad5 (Error error_list_bad5);
+  run "query_list_bad6" query_list_bad6 (Error error_list_bad6)
 
 (** {1 Functions and values for {!test_remove_duplicates}} *)
 
