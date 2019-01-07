@@ -101,8 +101,9 @@ rule main_parser buf acc_in acc_out nesting = parse
           build_param spec opt name >>= fun in_param ->
           Buffer.add_char buf '?';
           main_parser buf (in_param :: acc_in) acc_out nesting lexbuf}
-  | '@' (spec as spec) ('?'? as opt) '{' ([^ '}' ]+ as name) '}'
+  | '@' (spec as spec) ('?'? as opt) '{'
       {let open Result in
+      out_param_parser lexbuf >>= fun name ->
       build_param spec opt name >>= fun out_param ->
       Buffer.add_string buf name;
       main_parser buf acc_in (out_param :: acc_out) nesting lexbuf}
@@ -164,7 +165,13 @@ and ident_parser = parse
       {Ok ident}
   | ([^ '}' ]+ as etc) '}'
       {Error (`Bad_identifier etc)}
-  | eof
+  | _
+      {Error `Unterminated_bracket}
+
+and out_param_parser = parse
+  | ([^ '}' ]+ as name) '}'
+      {Ok name}
+  | _
       {Error `Unterminated_bracket}
 
 {
