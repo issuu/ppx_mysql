@@ -8,8 +8,8 @@ type param =
   ; to_string : string * string }
 
 type list_params =
-  { sql : string
-  ; loc : int
+  { subsql : string
+  ; index : int
   ; params : param list }
 
 type parsed_query =

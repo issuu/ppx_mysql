@@ -11,8 +11,8 @@ type param =
   ; to_string : string * string }
 
 type list_params =
-  { sql : string
-  ; loc : int
+  { subsql : string
+  ; index : int
   ; params : param list }
 
 type parsed_query =
@@ -78,11 +78,11 @@ rule main_parser buf acc_in acc_out nesting = parse
               Error `Nested_list
           | Absent ->
               let open Result in
-              let loc = Buffer.length buf in
+              let index = Buffer.length buf in
               let sub_buf = Buffer.create 64 in
               main_parser sub_buf [] [] Ongoing lexbuf >>= function
-              | {sql; in_params = params; out_params = []; list_params = _} ->
-                  let nesting = Complete {sql; loc; params} in
+              | {sql = subsql; in_params = params; out_params = []; list_params = _} ->
+                  let nesting = Complete {subsql; index; params} in
                   main_parser buf acc_in acc_out nesting lexbuf
               | _ ->
                   Error `Out_params_in_list
