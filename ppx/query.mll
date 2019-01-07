@@ -24,6 +24,8 @@ type parsed_query =
 type parse_error =
   [ `Bad_identifier of string
   | `Unknown_type_spec of string
+  | `Empty_list_params
+  | `Multiple_lists_not_supported
   | `Nested_list
   | `Optional_list
   | `Out_params_in_list
@@ -74,13 +76,17 @@ rule main_parser buf acc_in acc_out nesting = parse
       {match spec, opt with
       | "list", "" ->
           begin match nesting with
-          | Ongoing | Complete _ ->
-              Error `Nested_list
+          | Complete _ ->
+            Error `Multiple_lists_not_supported
+          | Ongoing ->
+            Error `Nested_list
           | Absent ->
               let open Result in
               let index = Buffer.length buf in
               let sub_buf = Buffer.create 64 in
               main_parser sub_buf [] [] Ongoing lexbuf >>= function
+              | {sql = _; in_params = []; out_params = []; list_params = _} ->
+                  Error `Empty_list_params
               | {sql = subsql; in_params = params; out_params = []; list_params = _} ->
                   let nesting = Complete {subsql; index; params} in
                   main_parser buf acc_in acc_out nesting lexbuf
@@ -189,6 +195,10 @@ let explain_error = function
     Printf.sprintf "'%s' is not a valid OCaml variable identifier" str
   | `Unknown_type_spec spec ->
     Printf.sprintf "Unknown type specification '%s'" spec
+  | `Empty_list_params ->
+    "Lists must have at least one parameter"
+  | `Multiple_lists_not_supported ->
+    "The query contains multiple lists. Multiple lists are not supported"
   | `Nested_list ->
     "The query contains a nested list parameter"
   | `Optional_list ->

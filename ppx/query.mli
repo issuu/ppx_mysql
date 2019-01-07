@@ -21,6 +21,8 @@ type parsed_query =
 type parse_error =
   [ `Bad_identifier of string
   | `Unknown_type_spec of string
+  | `Empty_list_params
+  | `Multiple_lists_not_supported
   | `Nested_list
   | `Optional_list
   | `Out_params_in_list
