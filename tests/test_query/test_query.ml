@@ -11,8 +11,8 @@ type param = Query.param =
 [@@deriving eq, show]
 
 type list_params = Query.list_params =
-  { sql : string
-  ; loc : int
+  { subsql : string
+  ; index : int
   ; params : param list }
 [@@deriving eq, show]
 
@@ -326,8 +326,8 @@ let parsed_query_list0 =
         ; to_string = "Pervasives", "string_of_int" } ]
   ; list_params =
       Some
-        { sql = "?"
-        ; loc = 52
+        { subsql = "?"
+        ; index = 52
         ; params =
             [ { typ = "int64"
               ; opt = false
@@ -345,8 +345,8 @@ let parsed_query_list1 =
   ; out_params = []
   ; list_params =
       Some
-        { sql = "(?, ?, ?)"
-        ; loc = 43
+        { subsql = "(?, ?, ?)"
+        ; index = 43
         ; params =
             [ { typ = "int"
               ; opt = false
