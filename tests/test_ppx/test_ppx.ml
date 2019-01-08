@@ -53,8 +53,7 @@ let test_string =
 
 let test_list0 =
   [%mysql
-    select_all
-      "SELECT @int{id}, @string{name} FROM users WHERE id IN (%list{%int{id}})"]
+    select_all "SELECT @int{id}, @string{name} FROM users WHERE id IN (%list{%int{id}})"]
 
 let test_list1 =
   [%mysql

@@ -367,6 +367,65 @@ let parsed_query_list1 =
               ; of_string = "Ppx_mysql_runtime", "identity"
               ; to_string = "Ppx_mysql_runtime", "identity" } ] } }
 
+let query_list2 =
+  "INSERT INTO users (id, name, phone) VALUES %list{(%int{id}, %string{name}, NULL)}"
+
+let parsed_query_list2 =
+  { sql = "INSERT INTO users (id, name, phone) VALUES "
+  ; in_params = []
+  ; out_params = []
+  ; list_params =
+      Some
+        { subsql = "(?, ?, NULL)"
+        ; string_index = 43
+        ; param_index = 0
+        ; params =
+            [ { typ = "int"
+              ; opt = false
+              ; name = "id"
+              ; of_string = "Ppx_mysql_runtime", "int_of_string"
+              ; to_string = "Pervasives", "string_of_int" }
+            ; { typ = "string"
+              ; opt = false
+              ; name = "name"
+              ; of_string = "Ppx_mysql_runtime", "identity"
+              ; to_string = "Ppx_mysql_runtime", "identity" } ] } }
+
+let query_list3 =
+  "SELECT @int{COUNT(*)} FROM users WHERE age > %int{age} OR id IN (%list{%int64{id}}) \
+   OR name = %string{name}"
+
+let parsed_query_list3 =
+  { sql = "SELECT COUNT(*) FROM users WHERE age > ? OR id IN () OR name = ?"
+  ; in_params =
+      [ { typ = "int"
+        ; opt = false
+        ; name = "age"
+        ; of_string = "Ppx_mysql_runtime", "int_of_string"
+        ; to_string = "Pervasives", "string_of_int" }
+      ; { typ = "string"
+        ; opt = false
+        ; name = "name"
+        ; of_string = "Ppx_mysql_runtime", "identity"
+        ; to_string = "Ppx_mysql_runtime", "identity" } ]
+  ; out_params =
+      [ { typ = "int"
+        ; opt = false
+        ; name = "COUNT(*)"
+        ; of_string = "Ppx_mysql_runtime", "int_of_string"
+        ; to_string = "Pervasives", "string_of_int" } ]
+  ; list_params =
+      Some
+        { subsql = "?"
+        ; string_index = 51
+        ; param_index = 1
+        ; params =
+            [ { typ = "int64"
+              ; opt = false
+              ; name = "id"
+              ; of_string = "Ppx_mysql_runtime", "int64_of_string"
+              ; to_string = "Int64", "to_string" } ] } }
+
 let query_bad0 = "SELECT true FROM users WHERE id = %int{ID}"
 
 let error_bad0 = `Bad_identifier "ID"
@@ -447,6 +506,8 @@ let test_parse_query () =
   run "query_quoted3" query_quoted3 (Ok parsed_query_quoted3);
   run "query_list0" query_list0 (Ok parsed_query_list0);
   run "query_list1" query_list1 (Ok parsed_query_list1);
+  run "query_list2" query_list2 (Ok parsed_query_list2);
+  run "query_list3" query_list3 (Ok parsed_query_list3);
   run "query_bad0" query_bad0 (Error error_bad0);
   run "query_bad1" query_bad1 (Error error_bad1);
   run "query_bad2" query_bad2 (Error error_bad2);
