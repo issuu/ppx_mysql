@@ -268,8 +268,8 @@ let actually_expand ~loc sql_variant query =
         [%e build_out_param_processor ~loc out_params]
       in
       Prepared.with_stmt dbh sql
-      @@ fun stmt ->
-      Prepared.execute_null stmt params >>= fun stmt_result -> [%e process_rows] ()]
+      (fun stmt ->
+      Prepared.execute_null stmt params >>= fun stmt_result -> [%e process_rows] ())]
   in
   let dbh_pat = Buildef.ppat_var ~loc (Loc.make ~loc "dbh") in
   let chain = build_fun_chain ~loc expr unique_in_params in
