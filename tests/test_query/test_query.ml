@@ -12,7 +12,8 @@ type param = Query.param =
 
 type list_params = Query.list_params =
   { subsql : string
-  ; index : int
+  ; string_index : int
+  ; param_index : int
   ; params : param list }
 [@@deriving eq, show]
 
@@ -327,7 +328,8 @@ let parsed_query_list0 =
   ; list_params =
       Some
         { subsql = "?"
-        ; index = 52
+        ; string_index = 52
+        ; param_index = 1
         ; params =
             [ { typ = "int64"
               ; opt = false
@@ -346,7 +348,8 @@ let parsed_query_list1 =
   ; list_params =
       Some
         { subsql = "(?, ?, ?)"
-        ; index = 43
+        ; string_index = 43
+        ; param_index = 0
         ; params =
             [ { typ = "int"
               ; opt = false
