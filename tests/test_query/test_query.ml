@@ -111,10 +111,10 @@ let parsed_query_out3 =
         ; to_string = "Ppx_mysql_runtime", "identity" } ]
   ; list_params = None }
 
-let query_in1 = "INSERT LO users (id) VALUES (%int64{id})"
+let query_in1 = "INSERT INTO users (id) VALUES (%int64{id})"
 
 let parsed_query_in1 =
-  { sql = "INSERT LO users (id) VALUES (?)"
+  { sql = "INSERT INTO users (id) VALUES (?)"
   ; in_params =
       [ { typ = "int64"
         ; opt = false
@@ -124,10 +124,10 @@ let parsed_query_in1 =
   ; out_params = []
   ; list_params = None }
 
-let query_in2 = "INSERT LO users (id, name) VALUES (%int64{id}, %string{name})"
+let query_in2 = "INSERT INTO users (id, name) VALUES (%int64{id}, %string{name})"
 
 let parsed_query_in2 =
-  { sql = "INSERT LO users (id, name) VALUES (?, ?)"
+  { sql = "INSERT INTO users (id, name) VALUES (?, ?)"
   ; in_params =
       [ { typ = "int64"
         ; opt = false
@@ -143,10 +143,10 @@ let parsed_query_in2 =
   ; list_params = None }
 
 let query_in3 =
-  "INSERT LO users (id, name, phone) VALUES (%int64{id}, %string{name}, %string?{phone})"
+  "INSERT INTO users (id, name, phone) VALUES (%int64{id}, %string{name}, %string?{phone})"
 
 let parsed_query_in3 =
-  { sql = "INSERT LO users (id, name, phone) VALUES (?, ?, ?)"
+  { sql = "INSERT INTO users (id, name, phone) VALUES (?, ?, ?)"
   ; in_params =
       [ { typ = "int64"
         ; opt = false
