@@ -932,3 +932,148 @@ let test_string dbh ~(a : string) ~(b : string option) =
         in
         loop [] )
         () )
+
+let test_list0 dbh elems =
+  let open IO_result in
+  ( match Ppx_mysql_runtime.Stdlib.List.length elems with
+  | 0 ->
+      IO.return (Ppx_mysql_runtime.Stdlib.Result.Error `Empty_input_list)
+  | n ->
+      let subsqls = Ppx_mysql_runtime.Stdlib.List.init n (fun _ -> "?") in
+      let patch = Ppx_mysql_runtime.Stdlib.String.concat ", " subsqls in
+      let sql =
+        Ppx_mysql_runtime.Stdlib.String.append
+          "SELECT id, name FROM users WHERE id IN ("
+          (Ppx_mysql_runtime.Stdlib.String.append patch ")")
+      in
+      let params_between =
+        Array.of_list
+          (List.concat
+             (List.map
+                (fun id ->
+                  [Ppx_mysql_runtime.Stdlib.Option.Some (Pervasives.string_of_int id)] )
+                elems))
+      in
+      let params = Ppx_mysql_runtime.Stdlib.Array.concat [[||]; params_between; [||]] in
+      IO.return (Ppx_mysql_runtime.Stdlib.Result.Ok (sql, params)) )
+  >>= fun (sql, params) ->
+  let[@warning "-26"] process_out_params row =
+    (let exception Deserialization_error of string * string * string in
+    (let exception Expected_non_null_column of string in
+    let ( = ) = Ppx_mysql_runtime.Stdlib.( = ) in
+    let len_row = Ppx_mysql_runtime.Stdlib.Array.length row in
+    if len_row = 2
+    then
+      try
+        Ppx_mysql_runtime.Stdlib.Result.Ok
+          ( ( try
+                Ppx_mysql_runtime.Stdlib.Option.get
+                  (let deserialize value =
+                     try Ppx_mysql_runtime.int_of_string value with Failure _ ->
+                       raise
+                         (Deserialization_error
+                            ("id", "Ppx_mysql_runtime.int_of_string", value))
+                   in
+                   Ppx_mysql_runtime.Stdlib.Option.map
+                     deserialize
+                     (Ppx_mysql_runtime.Stdlib.Array.get row 0))
+              with Invalid_argument _ -> raise (Expected_non_null_column "id") )
+          , try
+              Ppx_mysql_runtime.Stdlib.Option.get
+                (let deserialize value =
+                   try Ppx_mysql_runtime.identity value with Failure _ ->
+                     raise
+                       (Deserialization_error
+                          ("name", "Ppx_mysql_runtime.identity", value))
+                 in
+                 Ppx_mysql_runtime.Stdlib.Option.map
+                   deserialize
+                   (Ppx_mysql_runtime.Stdlib.Array.get row 1))
+            with Invalid_argument _ -> raise (Expected_non_null_column "name") )
+      with
+      | Deserialization_error (col, f, v) ->
+          Ppx_mysql_runtime.Stdlib.Result.Error
+            (`Column_errors [col, `Deserialization_error (f, v)])
+      | Expected_non_null_column col ->
+          Ppx_mysql_runtime.Stdlib.Result.Error
+            (`Column_errors [col, `Expected_non_null_value])
+    else
+      Ppx_mysql_runtime.Stdlib.Result.Error (`Unexpected_number_of_columns (len_row, 2))) 
+    [@warning "-38"]) [@warning "-38"]
+  in
+  Prepared.with_stmt dbh sql (fun stmt ->
+      Prepared.execute_null stmt params
+      >>= fun stmt_result ->
+      (fun () ->
+        let rec loop acc =
+          Prepared.fetch stmt_result
+          >>= function
+          | Ppx_mysql_runtime.Stdlib.Option.Some row -> (
+            match process_out_params row with
+            | Ppx_mysql_runtime.Stdlib.Result.Ok row' ->
+                loop (row' :: acc)
+            | Ppx_mysql_runtime.Stdlib.Result.Error _ as err ->
+                IO.return err )
+          | Ppx_mysql_runtime.Stdlib.Option.None ->
+              IO.return
+                (Ppx_mysql_runtime.Stdlib.Result.Ok
+                   (Ppx_mysql_runtime.Stdlib.List.rev acc))
+        in
+        loop [] )
+        () )
+
+let test_list1 dbh elems =
+  let open IO_result in
+  ( match Ppx_mysql_runtime.Stdlib.List.length elems with
+  | 0 ->
+      IO.return (Ppx_mysql_runtime.Stdlib.Result.Error `Empty_input_list)
+  | n ->
+      let subsqls = Ppx_mysql_runtime.Stdlib.List.init n (fun _ -> "(?, ?, NULL)") in
+      let patch = Ppx_mysql_runtime.Stdlib.String.concat ", " subsqls in
+      let sql =
+        Ppx_mysql_runtime.Stdlib.String.append
+          "INSERT INTO users (id, name, phone) VALUES "
+          (Ppx_mysql_runtime.Stdlib.String.append patch "")
+      in
+      let params_between =
+        Array.of_list
+          (List.concat
+             (List.map
+                (fun (id, name) ->
+                  [ Ppx_mysql_runtime.Stdlib.Option.Some (Pervasives.string_of_int id)
+                  ; Ppx_mysql_runtime.Stdlib.Option.Some
+                      (Ppx_mysql_runtime.identity name) ] )
+                elems))
+      in
+      let params = Ppx_mysql_runtime.Stdlib.Array.concat [[||]; params_between; [||]] in
+      IO.return (Ppx_mysql_runtime.Stdlib.Result.Ok (sql, params)) )
+  >>= fun (sql, params) ->
+  let[@warning "-26"] process_out_params row =
+    (let exception Deserialization_error of string * string * string in
+    (let exception Expected_non_null_column of string in
+    let ( = ) = Ppx_mysql_runtime.Stdlib.( = ) in
+    let len_row = Ppx_mysql_runtime.Stdlib.Array.length row in
+    if len_row = 0
+    then
+      try Ppx_mysql_runtime.Stdlib.Result.Ok () with
+      | Deserialization_error (col, f, v) ->
+          Ppx_mysql_runtime.Stdlib.Result.Error
+            (`Column_errors [col, `Deserialization_error (f, v)])
+      | Expected_non_null_column col ->
+          Ppx_mysql_runtime.Stdlib.Result.Error
+            (`Column_errors [col, `Expected_non_null_value])
+    else
+      Ppx_mysql_runtime.Stdlib.Result.Error (`Unexpected_number_of_columns (len_row, 0))) 
+    [@warning "-38"]) [@warning "-38"]
+  in
+  Prepared.with_stmt dbh sql (fun stmt ->
+      Prepared.execute_null stmt params
+      >>= fun stmt_result ->
+      (fun () ->
+        Prepared.fetch stmt_result
+        >>= function
+        | Ppx_mysql_runtime.Stdlib.Option.Some _ ->
+            IO.return (Ppx_mysql_runtime.Stdlib.Result.Error `Expected_none_found_one)
+        | Ppx_mysql_runtime.Stdlib.Option.None ->
+            IO.return (Ppx_mysql_runtime.Stdlib.Result.Ok ()) )
+        () )
