@@ -7,7 +7,7 @@ module Buildef = Ast_builder.Default
 
 let take_drop index elems =
   let rec loop accum index leftovers =
-    match (index, leftovers) with
+    match index, leftovers with
     | 0, _ ->
         List.rev accum, leftovers
     | i, hd :: tl ->
@@ -202,16 +202,37 @@ let actually_expand ~loc sql_variant query =
   (* Note that in the expr fragment below we disable warning 26 (about unused variables)
      for the 'process_out_params' function, since it may indeed be unused if there are
      no output parameters. *)
-  let sql_expr =
+  let setup_expr =
     match list_params with
     | None ->
+        let sql_expr = Buildef.estring ~loc sql in
+        let param_expr =
+          Buildef.pexp_array ~loc @@ List.map (build_in_param ~loc) in_params
+        in
         [%expr
-          IO.return (Ppx_mysql_runtime.Stdlib.Result.Ok [%e Buildef.estring ~loc sql])]
-    | Some { subsql; string_index; _ } ->
+          IO.return (Ppx_mysql_runtime.Stdlib.Result.Ok ([%e sql_expr], [%e param_expr]))]
+    | Some {subsql; string_index; param_index; params} ->
         let subsql_expr = Buildef.estring ~loc subsql in
         let sql_before = Buildef.estring ~loc @@ String.sub sql 0 string_index in
         let sql_after =
-          Buildef.estring ~loc @@ String.sub sql string_index (String.length sql - string_index)
+          Buildef.estring ~loc
+          @@ String.sub sql string_index (String.length sql - string_index)
+        in
+        let params_before, params_after = take_drop param_index in_params in
+        let params_before =
+          Buildef.pexp_array ~loc @@ List.map (build_in_param ~loc) params_before
+        in
+        let params_after =
+          Buildef.pexp_array ~loc @@ List.map (build_in_param ~loc) params_after
+        in
+        let list_params_decl =
+          let make_elem param =
+            Buildef.ppat_var ~loc (Loc.make ~loc Query.(param.name))
+          in
+          Buildef.ppat_tuple ~loc @@ List.map make_elem params
+        in
+        let list_params_conv =
+          Buildef.elist ~loc @@ List.map (build_in_param ~loc) params
         in
         [%expr
           match Ppx_mysql_runtime.Stdlib.List.length elems with
@@ -227,26 +248,25 @@ let actually_expand ~loc sql_variant query =
                   [%e sql_before]
                   (Ppx_mysql_runtime.Stdlib.String.append patch [%e sql_after])
               in
-              IO.return (Ppx_mysql_runtime.Stdlib.Result.Ok sql)]
-  in
-  let params_expr =
-    match list_params with
-    | None ->
-      Buildef.pexp_array ~loc @@ List.map (build_in_param ~loc) in_params
-    | Some { param_index; _ } ->
-      let params_before, params_after = take_drop param_index in_params in
-      let params_before = Buildef.pexp_array ~loc @@ List.map (build_in_param ~loc) params_before in
-      let params_after = Buildef.pexp_array ~loc @@ List.map (build_in_param ~loc) params_after in
-      let params_between = Buildef.pexp_array ~loc [] in
-      [%expr Ppx_mysql_runtime.Stdlib.Array.concat [[%e params_before]; [%e params_between]; [%e params_after]]]
+              let params_between =
+                Array.of_list
+                  (List.concat
+                     (List.map (fun [%p list_params_decl] -> [%e list_params_conv]) elems))
+              in
+              let params =
+                Ppx_mysql_runtime.Stdlib.Array.concat
+                  [[%e params_before]; params_between; [%e params_after]]
+              in
+              IO.return (Ppx_mysql_runtime.Stdlib.Result.Ok (sql, params))]
   in
   let expr =
     [%expr
       let open IO_result in
-      [%e sql_expr]
-      >>= fun sql ->
-      let params = [%e params_expr] in
-      let[@warning "-26"] process_out_params = [%e build_out_param_processor ~loc out_params] in
+      [%e setup_expr]
+      >>= fun (sql, params) ->
+      let[@warning "-26"] process_out_params =
+        [%e build_out_param_processor ~loc out_params]
+      in
       Prepared.with_stmt dbh sql
       @@ fun stmt ->
       Prepared.execute_null stmt params >>= fun stmt_result -> [%e process_rows] ()]
