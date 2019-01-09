@@ -935,11 +935,11 @@ let test_string dbh ~(a : string) ~(b : string option) =
 
 let test_list0 dbh elems =
   let open IO_result in
-  ( match Ppx_mysql_runtime.Stdlib.List.length elems with
-  | 0 ->
+  ( match elems with
+  | [] ->
       IO.return (Ppx_mysql_runtime.Stdlib.Result.Error `Empty_input_list)
-  | n ->
-      let subsqls = Ppx_mysql_runtime.Stdlib.List.init n (fun _ -> "?") in
+  | elems ->
+      let subsqls = Ppx_mysql_runtime.Stdlib.List.map (fun _ -> "?") elems in
       let patch = Ppx_mysql_runtime.Stdlib.String.concat ", " subsqls in
       let sql =
         Ppx_mysql_runtime.Stdlib.String.append
@@ -1024,11 +1024,11 @@ let test_list0 dbh elems =
 
 let test_list1 dbh elems =
   let open IO_result in
-  ( match Ppx_mysql_runtime.Stdlib.List.length elems with
-  | 0 ->
+  ( match elems with
+  | [] ->
       IO.return (Ppx_mysql_runtime.Stdlib.Result.Error `Empty_input_list)
-  | n ->
-      let subsqls = Ppx_mysql_runtime.Stdlib.List.init n (fun _ -> "(?, ?, NULL)") in
+  | elems ->
+      let subsqls = Ppx_mysql_runtime.Stdlib.List.map (fun _ -> "(?, ?, NULL)") elems in
       let patch = Ppx_mysql_runtime.Stdlib.String.concat ", " subsqls in
       let sql =
         Ppx_mysql_runtime.Stdlib.String.append

@@ -260,12 +260,12 @@ let actually_expand ~loc sql_variant query =
           Buildef.elist ~loc @@ List.map (build_in_param ~loc) params
         in
         [%expr
-          match Ppx_mysql_runtime.Stdlib.List.length [%e elems_ident] with
-          | 0 ->
+          match [%e elems_ident] with
+          | [] ->
               IO.return (Ppx_mysql_runtime.Stdlib.Result.Error `Empty_input_list)
-          | n ->
+          | elems ->
               let subsqls =
-                Ppx_mysql_runtime.Stdlib.List.init n (fun _ -> [%e subsql_expr])
+                Ppx_mysql_runtime.Stdlib.List.map (fun _ -> [%e subsql_expr]) elems
               in
               let patch = Ppx_mysql_runtime.Stdlib.String.concat ", " subsqls in
               let sql =
@@ -276,9 +276,7 @@ let actually_expand ~loc sql_variant query =
               let params_between =
                 Array.of_list
                   (List.concat
-                     (List.map
-                        (fun [%p list_params_decl] -> [%e list_params_conv])
-                        [%e elems_ident]))
+                     (List.map (fun [%p list_params_decl] -> [%e list_params_conv]) elems))
               in
               let params =
                 Ppx_mysql_runtime.Stdlib.Array.concat
