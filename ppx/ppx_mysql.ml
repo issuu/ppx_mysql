@@ -5,20 +5,21 @@ open Ppx_mysql_runtime.Stdlib
 module Query = Query
 module Buildef = Ast_builder.Default
 
-(* [take_drop] has the same signature and semantics as its homonym in Containers.
- * [take_drop n xs] is [(take n xs, drop n xs)].
+(* [split_n] has the same signature and semantics as its homonym in Base.
+ * [split_n xs n] is [(take xs n, drop xs n)].
  *)
-let take_drop index elems =
-  let rec loop accum index leftovers =
-    match index, leftovers with
-    | 0, _ ->
+let split_n elems index =
+  let rec loop accum leftovers index =
+    match leftovers, index with
+    | _, x
+      when x <= 0 ->
         List.rev accum, leftovers
-    | i, hd :: tl ->
-        loop (hd :: accum) (i - 1) tl
-    | _, [] ->
-        failwith "take_drop"
+    | [], _ ->
+        List.rev accum, leftovers
+    | hd :: tl, i ->
+        loop (hd :: accum) tl (i - 1)
   in
-  loop [] index elems
+  loop [] elems index
 
 let create_unique_var ~loc params base =
   let already_exists name =
@@ -243,7 +244,7 @@ let actually_expand ~loc sql_variant query =
           Buildef.estring ~loc
           @@ String.sub sql string_index (String.length sql - string_index)
         in
-        let params_before, params_after = take_drop param_index in_params in
+        let params_before, params_after = split_n in_params param_index in
         let params_before =
           Buildef.pexp_array ~loc @@ List.map (build_in_param ~loc) params_before
         in
