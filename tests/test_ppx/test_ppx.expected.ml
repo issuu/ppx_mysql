@@ -1077,3 +1077,97 @@ let test_list1 dbh elems =
         | Ppx_mysql_runtime.Stdlib.Option.None ->
             IO.return (Ppx_mysql_runtime.Stdlib.Result.Ok ()) )
         () )
+
+let test_list2 dbh elems ~(name : string) ~(age : int) =
+  let open IO_result in
+  ( match elems with
+  | [] ->
+      IO.return (Ppx_mysql_runtime.Stdlib.Result.Error `Empty_input_list)
+  | elems ->
+      let subsqls = Ppx_mysql_runtime.Stdlib.List.map (fun _ -> "?") elems in
+      let patch = Ppx_mysql_runtime.Stdlib.String.concat ", " subsqls in
+      let sql =
+        Ppx_mysql_runtime.Stdlib.String.append
+          "SELECT id, name FROM users WHERE name = ? OR id IN ("
+          (Ppx_mysql_runtime.Stdlib.String.append patch ") OR age > ?")
+      in
+      let params_between =
+        Array.of_list
+          (List.concat
+             (List.map
+                (fun id ->
+                  [Ppx_mysql_runtime.Stdlib.Option.Some (Pervasives.string_of_int id)] )
+                elems))
+      in
+      let params =
+        Ppx_mysql_runtime.Stdlib.Array.concat
+          [ [|Ppx_mysql_runtime.Stdlib.Option.Some (Ppx_mysql_runtime.identity name)|]
+          ; params_between
+          ; [|Ppx_mysql_runtime.Stdlib.Option.Some (Pervasives.string_of_int age)|] ]
+      in
+      IO.return (Ppx_mysql_runtime.Stdlib.Result.Ok (sql, params)) )
+  >>= fun (sql, params) ->
+  let[@warning "-26"] process_out_params row =
+    (let exception Deserialization_error of string * string * string in
+    (let exception Expected_non_null_column of string in
+    let ( = ) = Ppx_mysql_runtime.Stdlib.( = ) in
+    let len_row = Ppx_mysql_runtime.Stdlib.Array.length row in
+    if len_row = 2
+    then
+      try
+        Ppx_mysql_runtime.Stdlib.Result.Ok
+          ( ( try
+                Ppx_mysql_runtime.Stdlib.Option.get
+                  (let deserialize value =
+                     try Ppx_mysql_runtime.int_of_string value with Failure _ ->
+                       raise
+                         (Deserialization_error
+                            ("id", "Ppx_mysql_runtime.int_of_string", value))
+                   in
+                   Ppx_mysql_runtime.Stdlib.Option.map
+                     deserialize
+                     (Ppx_mysql_runtime.Stdlib.Array.get row 0))
+              with Invalid_argument _ -> raise (Expected_non_null_column "id") )
+          , try
+              Ppx_mysql_runtime.Stdlib.Option.get
+                (let deserialize value =
+                   try Ppx_mysql_runtime.identity value with Failure _ ->
+                     raise
+                       (Deserialization_error
+                          ("name", "Ppx_mysql_runtime.identity", value))
+                 in
+                 Ppx_mysql_runtime.Stdlib.Option.map
+                   deserialize
+                   (Ppx_mysql_runtime.Stdlib.Array.get row 1))
+            with Invalid_argument _ -> raise (Expected_non_null_column "name") )
+      with
+      | Deserialization_error (col, f, v) ->
+          Ppx_mysql_runtime.Stdlib.Result.Error
+            (`Column_errors [col, `Deserialization_error (f, v)])
+      | Expected_non_null_column col ->
+          Ppx_mysql_runtime.Stdlib.Result.Error
+            (`Column_errors [col, `Expected_non_null_value])
+    else
+      Ppx_mysql_runtime.Stdlib.Result.Error (`Unexpected_number_of_columns (len_row, 2))) 
+    [@warning "-38"]) [@warning "-38"]
+  in
+  Prepared.with_stmt dbh sql (fun stmt ->
+      Prepared.execute_null stmt params
+      >>= fun stmt_result ->
+      (fun () ->
+        let rec loop acc =
+          Prepared.fetch stmt_result
+          >>= function
+          | Ppx_mysql_runtime.Stdlib.Option.Some row -> (
+            match process_out_params row with
+            | Ppx_mysql_runtime.Stdlib.Result.Ok row' ->
+                loop (row' :: acc)
+            | Ppx_mysql_runtime.Stdlib.Result.Error _ as err ->
+                IO.return err )
+          | Ppx_mysql_runtime.Stdlib.Option.None ->
+              IO.return
+                (Ppx_mysql_runtime.Stdlib.Result.Ok
+                   (Ppx_mysql_runtime.Stdlib.List.rev acc))
+        in
+        loop [] )
+        () )
