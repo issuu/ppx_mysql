@@ -40,7 +40,7 @@ type conflict_error =
 
 type error = [ parse_error | conflict_error ]
 
-type nesting =
+type list_status =
   | Absent
   | Ongoing
   | Complete of list_params
@@ -69,14 +69,14 @@ let underscore = '_'
 let ident = (lower | underscore) (lower | upper | underscore | digit)*
 let spec = (lower | upper | underscore | digit)+
 
-rule main_parser buf acc_in acc_out nesting = parse
+rule main_parser buf acc_in acc_out list_status = parse
   | quot as delim
       {Buffer.add_char buf delim;
-      quotation_parser buf acc_in acc_out nesting delim lexbuf}
+      quotation_parser buf acc_in acc_out list_status delim lexbuf}
   | '%' (spec as spec) ('?'? as opt) '{'
       {match spec, opt with
       | "list", "" ->
-          begin match nesting with
+          begin match list_status with
           | Complete _ ->
             Error `Multiple_lists_not_supported
           | Ongoing ->
@@ -90,8 +90,8 @@ rule main_parser buf acc_in acc_out nesting = parse
                   Error `Empty_list_params
               | {sql = subsql; in_params = params; out_params = []; list_params = _} ->
                   let param_index = List.length acc_in in
-                  let nesting = Complete {subsql; string_index; param_index; params} in
-                  main_parser buf acc_in acc_out nesting lexbuf
+                  let list_status = Complete {subsql; string_index; param_index; params} in
+                  main_parser buf acc_in acc_out list_status lexbuf
               | _ ->
                   Error `Out_params_in_list
           end
@@ -102,20 +102,20 @@ rule main_parser buf acc_in acc_out nesting = parse
           ident_parser lexbuf >>= fun name ->
           build_param spec opt name >>= fun in_param ->
           Buffer.add_char buf '?';
-          main_parser buf (in_param :: acc_in) acc_out nesting lexbuf}
+          main_parser buf (in_param :: acc_in) acc_out list_status lexbuf}
   | '@' (spec as spec) ('?'? as opt) '{'
       {let open Result in
       out_param_parser lexbuf >>= fun name ->
       build_param spec opt name >>= fun out_param ->
       Buffer.add_string buf name;
-      main_parser buf acc_in (out_param :: acc_out) nesting lexbuf}
+      main_parser buf acc_in (out_param :: acc_out) list_status lexbuf}
   | escape eof
       {Error `Escape_at_end}
   | escape _ as str
       {Buffer.add_string buf str;
-      main_parser buf acc_in acc_out nesting lexbuf}
+      main_parser buf acc_in acc_out list_status lexbuf}
   | '}'
-      {match nesting with
+      {match list_status with
       | Ongoing ->
           let sql = Buffer.contents buf in
           let in_params = List.rev acc_in in
@@ -123,15 +123,15 @@ rule main_parser buf acc_in acc_out nesting = parse
           Ok {sql; in_params; out_params; list_params = None}
       | Absent | Complete _ ->
           Buffer.add_char buf '}';
-          main_parser buf acc_in acc_out nesting lexbuf}
+          main_parser buf acc_in acc_out list_status lexbuf}
   | _ as chr
       {Buffer.add_char buf chr;
-      main_parser buf acc_in acc_out nesting lexbuf}
+      main_parser buf acc_in acc_out list_status lexbuf}
   | eof
       {let sql = Buffer.contents buf in
       let in_params = List.rev acc_in in
       let out_params = List.rev acc_out in
-      match nesting with
+      match list_status with
       | Ongoing ->
           Error `Unterminated_list
       | Absent ->
@@ -139,26 +139,26 @@ rule main_parser buf acc_in acc_out nesting = parse
       | Complete nested ->
           Ok {sql; in_params; out_params; list_params = Some nested}}
 
-and quotation_parser buf acc_in acc_out nesting delim = parse
+and quotation_parser buf acc_in acc_out list_status delim = parse
   | escape eof
       {Error `Escape_at_end}
   | escape _ as str
       {Buffer.add_string buf str;
-      quotation_parser buf acc_in acc_out nesting delim lexbuf}
+      quotation_parser buf acc_in acc_out list_status delim lexbuf}
   | squot squot as str
       {Buffer.add_string buf str;
-      quotation_parser buf acc_in acc_out nesting delim lexbuf}
+      quotation_parser buf acc_in acc_out list_status delim lexbuf}
   | dquot dquot as str
       {Buffer.add_string buf str;
-      quotation_parser buf acc_in acc_out nesting delim lexbuf}
+      quotation_parser buf acc_in acc_out list_status delim lexbuf}
   | quot as chr
       {Buffer.add_char buf chr;
       if delim = chr
-      then main_parser buf acc_in acc_out nesting lexbuf
-      else quotation_parser buf acc_in acc_out nesting delim lexbuf}
+      then main_parser buf acc_in acc_out list_status lexbuf
+      else quotation_parser buf acc_in acc_out list_status delim lexbuf}
   | _ as chr
       {Buffer.add_char buf chr;
-      quotation_parser buf acc_in acc_out nesting delim lexbuf}
+      quotation_parser buf acc_in acc_out list_status delim lexbuf}
   | eof
       {Error `Unterminated_string}
 
