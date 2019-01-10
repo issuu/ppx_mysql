@@ -65,3 +65,9 @@ let test_list2 =
     select_all
       "SELECT @int{id}, @string{name} FROM users WHERE name = %string{name} OR id IN \
        (%list{%int{id}}) OR age > %int{age}"]
+
+let test_list3 =
+  [%mysql
+    execute
+      "INSERT INTO users (id, name, real_name, age) VALUES %list{(%int{id}, \
+       %string{name}, %string{name}, %int{age})}"]
