@@ -1,3 +1,8 @@
+1.1.3
+=====
+
+* Remove the upper limit on ppxlib
+
 1.1.2
 =====
 
