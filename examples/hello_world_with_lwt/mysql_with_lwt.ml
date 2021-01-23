@@ -3,11 +3,8 @@ include Ppx_mysql_runtime.Make_context (struct
 
   module Prepared = struct
     type dbh = Mysql.dbd
-
     type stmt = Mysql.Prepared.stmt
-
     type stmt_result = Mysql.Prepared.stmt_result
-
     type error = exn
 
     let wrap f x =
@@ -15,13 +12,11 @@ include Ppx_mysql_runtime.Make_context (struct
       Lwt.catch
         (fun () -> Lwt_preemptive.detach f x >>= fun v -> Lwt.return_ok v)
         (fun exn -> Lwt.return_error exn)
+    ;;
 
     let create dbd sql = wrap (Mysql.Prepared.create dbd) sql
-
     let close stmt = wrap Mysql.Prepared.close stmt
-
     let execute_null stmt args = wrap (Mysql.Prepared.execute_null stmt) args
-
     let fetch stmt_res = wrap Mysql.Prepared.fetch stmt_res
   end
 end)
