@@ -48,19 +48,19 @@ type list_status =
 let build_param spec opt name =
   let open Result in
   begin match spec with
-  | "int" ->
+    | "int" ->
       Ok ((None, "int"), ("Ppx_mysql_runtime", "int_of_string"), ("Stdlib", "string_of_int"))
-  | "int32" ->
+    | "int32" ->
       Ok ((None, "int32"), ("Ppx_mysql_runtime", "int32_of_string"), ("Int32", "to_string"))
-  | "int64" ->
+    | "int64" ->
       Ok ((None, "int64"), ("Ppx_mysql_runtime", "int64_of_string"), ("Int64", "to_string"))
-  | "bool" ->
+    | "bool" ->
       Ok ((None, "bool"), ("Ppx_mysql_runtime", "bool_of_string"), ("Stdlib", "string_of_bool"))
-  | "string" ->
+    | "string" ->
       Ok ((None, "string"), ("Ppx_mysql_runtime", "string_of_string"), ("Ppx_mysql_runtime", "identity"))
-  | module_name when String.length module_name > 0 && module_name.[0] >= 'A' && module_name.[0] <= 'Z' ->
-      Ok ((Some module_name, "t"), (module_name, "of_mysql"), (module_name, "to_mysql"))
-  | spec ->
+    | module_name when String.length module_name > 0 && module_name.[0] >= 'A' && module_name.[0] <= 'Z' ->
+      Ok ((Some module_name, "t"), (module_name, "of_string"), (module_name, "to_string"))
+    | spec ->
       Error (`Unknown_type_spec spec)
   end >>= fun (typ, of_string, to_string) ->
   Ok {typ; opt = (opt = "?"); name; of_string; to_string}
@@ -75,135 +75,135 @@ let lower = ['a'-'z']
 let upper = ['A'-'Z']
 let underscore = '_'
 let ident = (lower | underscore) (lower | upper | underscore | digit)*
-let spec = (lower | upper | underscore | digit)+
+            let spec = (lower | upper | underscore | digit)+
 
-rule main_parser buf acc_in acc_out list_status = parse
-  | quot as delim
-      {Buffer.add_char buf delim;
-      quotation_parser buf acc_in acc_out list_status delim lexbuf}
-  | '%' (spec as spec) ('?'? as opt) '{'
-      {match spec, opt with
-      | "list", "" ->
-          begin match list_status with
-          | Complete _ ->
-            Error `Multiple_lists_not_supported
-          | Ongoing ->
-            Error `Nested_list
-          | Absent ->
-              let open Result in
-              let string_index = Buffer.length buf in
-              let sub_buf = Buffer.create 64 in
-              main_parser sub_buf [] [] Ongoing lexbuf >>= function
-              | {sql = _; in_params = []; out_params = []; list_params = _} ->
-                  Error `Empty_list_params
-              | {sql = subsql; in_params = params; out_params = []; list_params = _} ->
-                  let param_index = List.length acc_in in
-                  let list_status = Complete {subsql; string_index; param_index; params} in
-                  main_parser buf acc_in acc_out list_status lexbuf
-              | _ ->
-                  Error `Out_params_in_list
-          end
-      | "list", "?" ->
-          Error `Optional_list
-      | spec, opt ->
-          let open Result in
-          ident_parser lexbuf >>= fun name ->
-          build_param spec opt name >>= fun in_param ->
-          Buffer.add_char buf '?';
-          main_parser buf (in_param :: acc_in) acc_out list_status lexbuf}
-  | '@' (spec as spec) ('?'? as opt) '{'
-      {let open Result in
-      out_param_parser lexbuf >>= fun name ->
-      build_param spec opt name >>= fun out_param ->
-      Buffer.add_string buf name;
-      main_parser buf acc_in (out_param :: acc_out) list_status lexbuf}
-  | escape eof
-      {Error `Escape_at_end}
-  | escape _ as str
-      {Buffer.add_string buf str;
-      main_parser buf acc_in acc_out list_status lexbuf}
-  | '}'
-      {match list_status with
-      | Ongoing ->
-          let sql = Buffer.contents buf in
-          let in_params = List.rev acc_in in
-          let out_params = List.rev acc_out in
-          Ok {sql; in_params; out_params; list_params = None}
-      | Absent | Complete _ ->
-          Buffer.add_char buf '}';
-          main_parser buf acc_in acc_out list_status lexbuf}
-  | _ as chr
-      {Buffer.add_char buf chr;
-      main_parser buf acc_in acc_out list_status lexbuf}
-  | eof
-      {let sql = Buffer.contents buf in
-      let in_params = List.rev acc_in in
-      let out_params = List.rev acc_out in
-      match list_status with
-      | Ongoing ->
-          Error `Unterminated_list
-      | Absent ->
-          Ok {sql; in_params; out_params; list_params = None}
-      | Complete nested ->
-          Ok {sql; in_params; out_params; list_params = Some nested}}
+                       rule main_parser buf acc_in acc_out list_status = parse
+                     | quot as delim
+                       {Buffer.add_char buf delim;
+                        quotation_parser buf acc_in acc_out list_status delim lexbuf}
+                     | '%' (spec as spec) ('?'? as opt) '{'
+                         {match spec, opt with
+                          | "list", "" ->
+                            begin match list_status with
+                              | Complete _ ->
+                                Error `Multiple_lists_not_supported
+                              | Ongoing ->
+                                Error `Nested_list
+                              | Absent ->
+                                let open Result in
+                                let string_index = Buffer.length buf in
+                                let sub_buf = Buffer.create 64 in
+                                main_parser sub_buf [] [] Ongoing lexbuf >>= function
+                                | {sql = _; in_params = []; out_params = []; list_params = _} ->
+                                  Error `Empty_list_params
+                                | {sql = subsql; in_params = params; out_params = []; list_params = _} ->
+                                  let param_index = List.length acc_in in
+                                  let list_status = Complete {subsql; string_index; param_index; params} in
+                                  main_parser buf acc_in acc_out list_status lexbuf
+                                | _ ->
+                                  Error `Out_params_in_list
+                            end
+                          | "list", "?" ->
+                            Error `Optional_list
+                          | spec, opt ->
+                            let open Result in
+                            ident_parser lexbuf >>= fun name ->
+                            build_param spec opt name >>= fun in_param ->
+                            Buffer.add_char buf '?';
+                            main_parser buf (in_param :: acc_in) acc_out list_status lexbuf}
+                     | '@' (spec as spec) ('?'? as opt) '{'
+                         {let open Result in
+                          out_param_parser lexbuf >>= fun name ->
+                          build_param spec opt name >>= fun out_param ->
+                          Buffer.add_string buf name;
+                          main_parser buf acc_in (out_param :: acc_out) list_status lexbuf}
+                     | escape eof
+                         {Error `Escape_at_end}
+                     | escape _ as str
+                       {Buffer.add_string buf str;
+                        main_parser buf acc_in acc_out list_status lexbuf}
+                     | '}'
+                         {match list_status with
+                          | Ongoing ->
+                            let sql = Buffer.contents buf in
+                            let in_params = List.rev acc_in in
+                            let out_params = List.rev acc_out in
+                            Ok {sql; in_params; out_params; list_params = None}
+                          | Absent | Complete _ ->
+                            Buffer.add_char buf '}';
+                            main_parser buf acc_in acc_out list_status lexbuf}
+                     | _ as chr
+                       {Buffer.add_char buf chr;
+                        main_parser buf acc_in acc_out list_status lexbuf}
+                     | eof
+                         {let sql = Buffer.contents buf in
+                          let in_params = List.rev acc_in in
+                          let out_params = List.rev acc_out in
+                          match list_status with
+                          | Ongoing ->
+                            Error `Unterminated_list
+                          | Absent ->
+                            Ok {sql; in_params; out_params; list_params = None}
+                          | Complete nested ->
+                            Ok {sql; in_params; out_params; list_params = Some nested}}
 
-and quotation_parser buf acc_in acc_out list_status delim = parse
-  | escape eof
-      {Error `Escape_at_end}
-  | escape _ as str
-      {Buffer.add_string buf str;
-      quotation_parser buf acc_in acc_out list_status delim lexbuf}
-  | squot squot as str
-      {Buffer.add_string buf str;
-      quotation_parser buf acc_in acc_out list_status delim lexbuf}
-  | dquot dquot as str
-      {Buffer.add_string buf str;
-      quotation_parser buf acc_in acc_out list_status delim lexbuf}
-  | quot as chr
-      {Buffer.add_char buf chr;
-      if delim = chr
-      then main_parser buf acc_in acc_out list_status lexbuf
-      else quotation_parser buf acc_in acc_out list_status delim lexbuf}
-  | _ as chr
-      {Buffer.add_char buf chr;
-      quotation_parser buf acc_in acc_out list_status delim lexbuf}
-  | eof
-      {Error `Unterminated_string}
+            and quotation_parser buf acc_in acc_out list_status delim = parse
+                                                                      | escape eof
+                                                                          {Error `Escape_at_end}
+                                                                      | escape _ as str
+                                                                        {Buffer.add_string buf str;
+                                                                         quotation_parser buf acc_in acc_out list_status delim lexbuf}
+                                                                      | squot squot as str
+                                                                        {Buffer.add_string buf str;
+                                                                         quotation_parser buf acc_in acc_out list_status delim lexbuf}
+                                                                      | dquot dquot as str
+                                                                        {Buffer.add_string buf str;
+                                                                         quotation_parser buf acc_in acc_out list_status delim lexbuf}
+                                                                      | quot as chr
+                                                                        {Buffer.add_char buf chr;
+                                                                         if delim = chr
+                                                                         then main_parser buf acc_in acc_out list_status lexbuf
+                                                                         else quotation_parser buf acc_in acc_out list_status delim lexbuf}
+                                                                      | _ as chr
+                                                                        {Buffer.add_char buf chr;
+                                                                         quotation_parser buf acc_in acc_out list_status delim lexbuf}
+                                                                      | eof
+                                                                          {Error `Unterminated_string}
 
-and ident_parser = parse
-  | (ident as ident) '}'
-      {Ok ident}
-  | ([^ '}' ]+ as etc) '}'
-      {Error (`Bad_identifier etc)}
-  | _
-      {Error `Unterminated_bracket}
+            and ident_parser = parse
+                             | (ident as ident) '}'
+                                 {Ok ident}
+                             | ([^ '}' ]+ as etc) '}'
+                                 {Error (`Bad_identifier etc)}
+                             | _
+                                 {Error `Unterminated_bracket}
 
-and out_param_parser = parse
-  | ([^ '}' ]+ as name) '}'
-      {Ok name}
-  | _
-      {Error `Unterminated_bracket}
+            and out_param_parser = parse
+                                 | ([^ '}' ]+ as name) '}'
+                                     {Ok name}
+                                 | _
+                                     {Error `Unterminated_bracket}
 
-{
-let parse query =
-  let lexbuf = Lexing.from_string query in
-  let buf = Buffer.create (String.length query) in
-  main_parser buf [] [] Absent lexbuf
+                                     {
+                                       let parse query =
+                                         let lexbuf = Lexing.from_string query in
+                                         let buf = Buffer.create (String.length query) in
+                                         main_parser buf [] [] Absent lexbuf
 
 let remove_duplicates params =
   let rec loop dict accum = function
     | [] ->
-        Ok (List.rev accum)
+      Ok (List.rev accum)
     | {name; typ; opt; _} as hd :: tl ->
-        match Param_dict.find_opt name dict with
-        | None ->
-            let dict = Param_dict.add name hd dict in
-            let accum = hd :: accum in
-            loop dict accum tl
-        | Some el when el.typ = typ && el.opt = opt ->
-            loop dict accum tl
-        | Some _el ->
-            Error (`Conflicting_spec name)
+      match Param_dict.find_opt name dict with
+      | None ->
+        let dict = Param_dict.add name hd dict in
+        let accum = hd :: accum in
+        loop dict accum tl
+      | Some el when el.typ = typ && el.opt = opt ->
+        loop dict accum tl
+      | Some _el ->
+        Error (`Conflicting_spec name)
   in
   loop Param_dict.empty [] params
 
