@@ -326,8 +326,8 @@ let actually_expand ~loc query_action cached query =
 let expand ~loc ~path:_ query_action cached query =
   match actually_expand ~loc query_action cached query with
   | Ok expr ->
-    Caml.Printf.printf "\n\n%s\n" query;
-    Pprintast.expression Caml.Format.std_formatter expr;
+    (* Caml.Printf.printf "\n\n%s\n" query; *)
+    (* Pprintast.expression Caml.Format.std_formatter expr; *)
     expr
   | Error err ->
     let msg = Error.to_string_hum err in
