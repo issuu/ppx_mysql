@@ -1,3 +1,3 @@
-(lang dune 1.4)
-(using fmt 1.0)
+(lang dune 2.8)
+
 (name ppx_mysql)

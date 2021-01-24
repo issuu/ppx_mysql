@@ -17,10 +17,15 @@ build: [
 ]
 depends: [
   "alcotest" {with-test & >= "0.8" & < "0.9"}
-  "dune" {>= "1.4"}
+  "dune" {>= "2.8"}
   "ocamlformat" {with-test & >= "0.9" & < "0.10"}
   "ocaml" {>= "4.06.0" }
   "ppx_deriving" {with-test & >= "4.2" & < "5.0"}
   "ppxlib" {>= "0.2"}
+  "base"
+  "sexplib"
+  "mysql"
+  "async"
+  "ppx_jane"
   "stdlib-shims"
 ]
