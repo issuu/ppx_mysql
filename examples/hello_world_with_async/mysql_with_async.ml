@@ -13,17 +13,22 @@ include Ppx_mysql_runtime.Make_context (struct
     type dbh = Mysql.dbd
     type stmt = Mysql.Prepared.stmt
     type stmt_result = Mysql.Prepared.stmt_result
-    type error = exn
 
-    let wrap f x =
-      Deferred.return
-        (try Ok (f x) with
-        | exc -> Error exc)
+    let create dbh sql =
+      Deferred.(Or_error.try_with (fun () -> return @@ Mysql.Prepared.create dbh sql))
     ;;
 
-    let create dbh sql = wrap (Mysql.Prepared.create dbh) sql
-    let close stmt = wrap Mysql.Prepared.close stmt
-    let execute_null stmt args = wrap (Mysql.Prepared.execute_null stmt) args
-    let fetch stmt_res = wrap Mysql.Prepared.fetch stmt_res
+    let close stmt =
+      Deferred.(Or_error.try_with (fun () -> return @@ Mysql.Prepared.close stmt))
+    ;;
+
+    let execute_null stmt args =
+      Deferred.(
+        Or_error.try_with (fun () -> return @@ (Mysql.Prepared.execute_null stmt) args))
+    ;;
+
+    let fetch stmt_res =
+      Deferred.(Or_error.try_with (fun () -> return @@ Mysql.Prepared.fetch stmt_res))
+    ;;
   end
 end)

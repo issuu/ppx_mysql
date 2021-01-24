@@ -1,4 +1,5 @@
 (** {1 Type definitions} *)
+open Base
 
 type param =
   { typ : string option * string
@@ -45,6 +46,6 @@ type error =
 
 (** {1 Public functions and values} *)
 
-val parse : string -> (parsed_query, [> parse_error ]) result
-val remove_duplicates : param list -> (param list, [> conflict_error ]) result
+val parse : string -> parsed_query Or_error.t
+val remove_duplicates : param list -> param list Or_error.t
 val explain_error : [< error ] -> string

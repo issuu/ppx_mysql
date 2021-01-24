@@ -1,4 +1,6 @@
 (library
  (name ppx_mysql_runtime)
  (public_name ppx_mysql.runtime)
- (libraries stdlib-shims base))
+ (libraries stdlib-shims base)
+ (preprocess
+  (pps ppx_jane)))

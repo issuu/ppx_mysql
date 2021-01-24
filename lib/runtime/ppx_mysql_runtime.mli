@@ -1,3 +1,5 @@
+open Base
+
 type deserialization_error =
   { idx : int
   ; name : string
@@ -5,11 +7,16 @@ type deserialization_error =
   ; value : string
   ; message : string
   }
+[@@deriving sexp_of]
 
 type column_error =
   [ `Expected_non_null_column of int * string
   | `Deserialization_error of deserialization_error
   ]
+[@@deriving sexp_of]
+
+val sexp_of_column_errors : column_error list -> Sexp.t
+val sexp_of_unexpected_number_of_columns : int * int -> Sexp.t
 
 type 'a deserializer = string -> 'a
 
@@ -57,12 +64,11 @@ module type PPX_MYSQL_CONTEXT_ARG = sig
     type dbh
     type stmt
     type stmt_result
-    type error
 
-    val create : dbh -> string -> (stmt, error) result IO.t
-    val close : stmt -> (unit, error) result IO.t
-    val execute_null : stmt -> string option array -> (stmt_result, error) result IO.t
-    val fetch : stmt_result -> (string option array option, error) result IO.t
+    val create : dbh -> string -> stmt Base.Or_error.t IO.t
+    val close : stmt -> unit Base.Or_error.t IO.t
+    val execute_null : stmt -> string option array -> stmt_result Base.Or_error.t IO.t
+    val fetch : stmt_result -> string option array option Base.Or_error.t IO.t
   end
 end
 
@@ -76,7 +82,7 @@ module type PPX_MYSQL_CONTEXT = sig
   end
 
   module IO_result : sig
-    type ('a, 'e) t = ('a, 'e) result IO.t
+    type ('a, 'e) t = ('a, 'e) Result.t IO.t
 
     val return : 'a -> ('a, 'e) t
     val bind : ('a, 'e) t -> ('a -> ('b, 'e) t) -> ('b, 'e) t
@@ -87,79 +93,25 @@ module type PPX_MYSQL_CONTEXT = sig
     type dbh
     type stmt
     type stmt_result
-    type error
     type wrapped_dbh
-    type wrapped_error = [ `Mysql_error of error ]
 
     val init : dbh -> wrapped_dbh
-
-    val execute_null
-      :  stmt
-      -> string option array
-      -> (stmt_result, [> wrapped_error ]) result IO.t
-
-    val fetch
-      :  stmt_result
-      -> (string option array option, [> wrapped_error ]) result IO.t
+    val execute_null : stmt -> string option array -> stmt_result Base.Or_error.t IO.t
+    val fetch : stmt_result -> string option array option Base.Or_error.t IO.t
 
     val with_stmt_cached
       :  wrapped_dbh
       -> string
-      -> (stmt -> ('a, ([> wrapped_error ] as 'e)) result IO.t)
-      -> ('a, 'e) result IO.t
+      -> (stmt -> 'a Base.Or_error.t IO.t)
+      -> 'a Base.Or_error.t IO.t
 
     val with_stmt_uncached
       :  wrapped_dbh
       -> string
-      -> (stmt -> ('a, ([> wrapped_error ] as 'e)) result IO.t)
-      -> ('a, 'e) result IO.t
+      -> (stmt -> 'a Base.Or_error.t IO.t)
+      -> 'a Base.Or_error.t IO.t
   end
 end
 
 module Make_context (M : PPX_MYSQL_CONTEXT_ARG) :
-  PPX_MYSQL_CONTEXT
-    with type 'a IO.t = 'a M.IO.t
-     and type Prepared.dbh = M.Prepared.dbh
-     and type Prepared.error = M.Prepared.error
-
-module Stdlib : sig
-  module Array : sig
-    include module type of struct
-      include Array
-    end
-  end
-
-  module List : sig
-    include module type of struct
-      include List
-    end
-  end
-
-  module Option : sig
-    type 'a t = 'a option =
-      | None
-      | Some of 'a
-
-    val map : ('a -> 'b) -> 'a t -> 'b t
-    val get : 'a t -> 'a
-  end
-
-  module Result : sig
-    type ('a, 'e) t = ('a, 'e) result =
-      | Ok of 'a
-      | Error of 'e
-
-    val bind : ('a, 'e) t -> ('a -> ('b, 'e) t) -> ('b, 'e) t
-    val ( >>= ) : ('a, 'e) t -> ('a -> ('b, 'e) t) -> ('b, 'e) t
-  end
-
-  module String : sig
-    include module type of struct
-      include String
-    end
-
-    val append : string -> string -> string
-  end
-
-  val ( = ) : 'a -> 'a -> bool
-end
+  PPX_MYSQL_CONTEXT with type 'a IO.t = 'a M.IO.t and type Prepared.dbh = M.Prepared.dbh

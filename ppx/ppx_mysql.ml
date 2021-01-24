@@ -1,5 +1,5 @@
+open Base
 open Ppxlib
-open Ppx_mysql_runtime.Stdlib
 
 (* So the unit tests have access to the Query module *)
 module Query = Query
@@ -19,7 +19,9 @@ let split_n elems index =
 ;;
 
 let create_unique_var ~loc params base =
-  let already_exists name = List.exists (fun param -> Query.(param.name) = name) params in
+  let already_exists name =
+    List.exists ~f:(fun param -> String.equal Query.(param.name) name) params
+  in
   let rec add_suffix counter =
     let candidate = Printf.sprintf "%s_%d" base counter in
     match already_exists candidate with
@@ -65,7 +67,7 @@ let build_in_param ~loc param =
   let arg = Buildef.pexp_ident ~loc (Loc.make ~loc (Lident param.name)) in
   match param.opt with
   | true -> [%expr (Option.map [%e to_string]) [%e arg]]
-  | false -> [%expr Option.Some ([%e to_string] [%e arg])]
+  | false -> [%expr Option.(Some ([%e to_string] [%e arg]))]
 ;;
 
 let make_column_expr ~loc i param =
@@ -103,10 +105,11 @@ let build_out_param_processor ~loc out_params =
       [%expr
         let err_accum = [] in
         match [%e make_column_expr ~loc 0 x] with
-        | Option.Some res, _ -> Result.Ok res
-        | Option.None, err -> Result.Error (`Column_errors err)]
+        | Some res, _ -> Result.Ok res
+        | None, err ->
+          Base.Or_error.error_s @@ Ppx_mysql_runtime.sexp_of_column_errors err]
     | _ ->
-      let make_ident_str name i = String.append name @@ string_of_int i in
+      let make_ident_str name i = name ^ Int.to_string i in
       let make_ident_expr name i =
         Buildef.pexp_ident ~loc (Loc.make ~loc (Lident (make_ident_str name i)))
       in
@@ -115,17 +118,17 @@ let build_out_param_processor ~loc out_params =
       in
       let match_expr =
         let test_expr =
-          Buildef.pexp_tuple ~loc @@ List.init len_out_params (make_ident_expr "col")
+          Buildef.pexp_tuple ~loc @@ List.init len_out_params ~f:(make_ident_expr "col")
         in
         let ok_case =
           let lhs =
             Buildef.ppat_tuple ~loc
-            @@ List.init len_out_params (fun i ->
-                   [%pat? Option.Some [%p make_ident_pat "v" i]])
+            @@ List.init len_out_params ~f:(fun i ->
+                   [%pat? Some [%p make_ident_pat "v" i]])
           in
           let rhs =
             let tuple =
-              Buildef.pexp_tuple ~loc @@ List.init len_out_params (make_ident_expr "v")
+              Buildef.pexp_tuple ~loc @@ List.init len_out_params ~f:(make_ident_expr "v")
             in
             [%expr Result.Ok [%e tuple]]
           in
@@ -133,7 +136,10 @@ let build_out_param_processor ~loc out_params =
         in
         let error_case =
           let lhs = Buildef.ppat_any ~loc in
-          let rhs = [%expr Result.Error (`Column_errors err_accum)] in
+          let rhs =
+            [%expr
+              Base.Or_error.error_s @@ Ppx_mysql_runtime.sexp_of_column_errors err_accum]
+          in
           Buildef.case ~lhs ~guard:None ~rhs
         in
         Buildef.pexp_match ~loc test_expr [ ok_case; error_case ]
@@ -146,7 +152,7 @@ let build_out_param_processor ~loc out_params =
           let binding = Buildef.value_binding ~loc ~pat ~expr in
           Buildef.pexp_let ~loc Nonrecursive [ binding ] accum, i - 1
         in
-        List.fold_right make_call out_params (match_expr, len_out_params - 1)
+        List.fold_right out_params ~f:make_call ~init:(match_expr, len_out_params - 1)
       in
       [%expr
         let err_accum = [] in
@@ -156,9 +162,12 @@ let build_out_param_processor ~loc out_params =
   [%expr
     fun row ->
       let len_row = Array.length row in
-      if Ppx_mysql_runtime.Stdlib.( = ) len_row [%e len_expected]
+      if Base.( = ) len_row [%e len_expected]
       then [%e ret_expr]
-      else Result.Error (`Unexpected_number_of_columns (len_row, [%e len_expected]))]
+      else
+        Base.Or_error.error_s
+        @@ Ppx_mysql_runtime.sexp_of_unexpected_number_of_columns
+             (len_row, [%e len_expected])]
 ;;
 
 let build_process_rows ~loc = function
@@ -170,13 +179,14 @@ let build_process_rows ~loc = function
             Prepared.fetch stmt_result
             >>= fun maybe_row ->
             match acc, maybe_row with
-            | [], Option.Some row ->
+            | [], Some row ->
               (match process_out_params row with
               | Result.Ok row' -> loop [ row' ]
               | Result.Error _ as err -> IO.return err)
-            | [], Option.None -> IO.return (Result.Error `Expected_one_found_none)
-            | _ :: _, Option.Some _ -> IO.return (Result.Error `Expected_one_found_many)
-            | hd :: _, Option.None -> IO.return (Result.Ok hd)
+            | [], None -> IO.return (Base.Or_error.error_string "Expected_one_found_none")
+            | _ :: _, Some _ ->
+              IO.return (Base.Or_error.error_string "Expected_one_found_many")
+            | hd :: _, None -> IO.return (Result.Ok hd)
           in
           loop []]
   | "select_opt" ->
@@ -187,14 +197,14 @@ let build_process_rows ~loc = function
             Prepared.fetch stmt_result
             >>= fun maybe_row ->
             match acc, maybe_row with
-            | [], Option.Some row ->
+            | [], Some row ->
               (match process_out_params row with
               | Result.Ok row' -> loop [ row' ]
               | Result.Error _ as err -> IO.return err)
-            | [], Option.None -> IO.return (Result.Ok Option.None)
-            | _ :: _, Option.Some _ ->
-              IO.return (Result.Error `Expected_maybe_one_found_many)
-            | hd :: _, Option.None -> IO.return (Result.Ok (Option.Some hd))
+            | [], None -> IO.return (Result.Ok None)
+            | _ :: _, Some _ ->
+              IO.return (Base.Or_error.error_string "Expected_maybe_one_found_many")
+            | hd :: _, None -> IO.return (Result.Ok (Some hd))
           in
           loop []]
   | "select_all" ->
@@ -204,11 +214,11 @@ let build_process_rows ~loc = function
           let rec loop acc =
             Prepared.fetch stmt_result
             >>= function
-            | Option.Some row ->
+            | Some row ->
               (match process_out_params row with
               | Result.Ok row' -> loop (row' :: acc)
               | Result.Error _ as err -> IO.return err)
-            | Option.None -> IO.return (Result.Ok (List.rev acc))
+            | None -> IO.return (Result.Ok (List.rev acc))
           in
           loop []]
   | "execute" ->
@@ -217,9 +227,9 @@ let build_process_rows ~loc = function
         fun () ->
           Prepared.fetch stmt_result
           >>= function
-          | Option.Some _ -> IO.return (Result.Error `Expected_none_found_one)
-          | Option.None -> IO.return (Result.Ok ())]
-  | etc -> Error (`Unknown_query_action etc)
+          | Some _ -> IO.return (Base.Or_error.error_string "Expected_none_found_one")
+          | None -> IO.return (Result.Ok ())]
+  | etc -> Or_error.errorf "Unknown_query_action %s" etc
 ;;
 
 let actually_expand ~loc query_action cached query =
@@ -227,7 +237,7 @@ let actually_expand ~loc query_action cached query =
   (match cached with
   | None | Some "true" -> Ok [%expr Prepared.with_stmt_cached]
   | Some "false" -> Ok [%expr Prepared.with_stmt_uncached]
-  | Some etc -> Error (`Invalid_cached_parameter etc))
+  | Some etc -> Or_error.errorf "Invalid_cached_parameter %s" etc)
   >>= fun with_stmt ->
   build_process_rows ~loc query_action
   >>= fun process_rows ->
@@ -241,42 +251,44 @@ let actually_expand ~loc query_action cached query =
   | None ->
     let sql_expr = Buildef.estring ~loc sql in
     let param_expr =
-      Buildef.pexp_array ~loc @@ List.map (build_in_param ~loc) in_params
+      Buildef.pexp_array ~loc @@ List.map ~f:(build_in_param ~loc) in_params
     in
     Ok [%expr IO.return (Result.Ok ([%e sql_expr], [%e param_expr]))]
   | Some { subsql; string_index; param_index; params } ->
     Query.remove_duplicates params
     >>= fun unique_params ->
     let subsql_expr = Buildef.estring ~loc subsql in
-    let sql_before = Buildef.estring ~loc @@ String.sub sql 0 string_index in
+    let sql_before = Buildef.estring ~loc @@ String.sub sql ~pos:0 ~len:string_index in
     let sql_after =
       Buildef.estring ~loc
-      @@ String.sub sql string_index (String.length sql - string_index)
+      @@ String.sub sql ~pos:string_index ~len:(String.length sql - string_index)
     in
     let params_before, params_after = split_n in_params param_index in
     let params_before =
-      Buildef.pexp_array ~loc @@ List.map (build_in_param ~loc) params_before
+      Buildef.pexp_array ~loc @@ List.map ~f:(build_in_param ~loc) params_before
     in
     let params_after =
-      Buildef.pexp_array ~loc @@ List.map (build_in_param ~loc) params_after
+      Buildef.pexp_array ~loc @@ List.map ~f:(build_in_param ~loc) params_after
     in
     let list_params_decl =
       let make_elem param = Buildef.ppat_var ~loc (Loc.make ~loc Query.(param.name)) in
-      Buildef.ppat_tuple ~loc @@ List.map make_elem unique_params
+      Buildef.ppat_tuple ~loc @@ List.map ~f:make_elem unique_params
     in
-    let list_params_conv = Buildef.elist ~loc @@ List.map (build_in_param ~loc) params in
+    let list_params_conv =
+      Buildef.elist ~loc @@ List.map ~f:(build_in_param ~loc) params
+    in
     Ok
       [%expr
         match [%e elems_ident] with
-        | [] -> IO.return (Result.Error `Empty_input_list)
+        | [] -> IO.return @@ Base.Or_error.error_string "Empty_input_list"
         | elems ->
-          let subsqls = List.map (fun _ -> [%e subsql_expr]) elems in
-          let patch = String.concat ", " subsqls in
-          let sql = String.append [%e sql_before] (String.append patch [%e sql_after]) in
+          let subsqls = List.map ~f:(fun _ -> [%e subsql_expr]) elems in
+          let patch = String.concat ~sep:", " subsqls in
+          let sql = String.([%e sql_before] ^ patch ^ [%e sql_after]) in
           let params_between =
             Array.of_list
               (List.concat
-                 (List.map (fun [%p list_params_decl] -> [%e list_params_conv]) elems))
+                 (List.map ~f:(fun [%p list_params_decl] -> [%e list_params_conv]) elems))
           in
           let params =
             Array.concat [ [%e params_before]; params_between; [%e params_after] ]
@@ -289,11 +301,6 @@ let actually_expand ~loc query_action cached query =
   let expr =
     [%expr
       let open IO_result in
-      let module Array = Ppx_mysql_runtime.Stdlib.Array in
-      let module List = Ppx_mysql_runtime.Stdlib.List in
-      let module Option = Ppx_mysql_runtime.Stdlib.Option in
-      let module String = Ppx_mysql_runtime.Stdlib.String in
-      let module Result = Ppx_mysql_runtime.Stdlib.Result in
       [%e setup_expr]
       >>= fun (sql, params) ->
       let[@warning "-26"] process_out_params =
@@ -315,16 +322,7 @@ let expand ~loc ~path:_ query_action cached query =
   match actually_expand ~loc query_action cached query with
   | Ok expr -> expr
   | Error err ->
-    let msg =
-      match err with
-      | #Query.error as err -> Query.explain_error err
-      | `Unknown_query_action action ->
-        Printf.sprintf "I don't understand query action '%s'" action
-      | `Invalid_cached_parameter param ->
-        Printf.sprintf
-          "Only values 'true' or 'false' are accepted, but got '%s' instead"
-          param
-    in
+    let msg = Error.to_string_hum err in
     raise
       (Location.Error (Location.Error.createf ~loc "Error in 'mysql' extension: %s" msg))
 ;;

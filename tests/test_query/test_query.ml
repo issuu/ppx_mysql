@@ -27,29 +27,29 @@ type parsed_query = Query.parsed_query =
   }
 [@@deriving eq, show]
 
-type parse_error =
-  [ `Bad_identifier of string
-  | `Unknown_type_spec of string
-  | `Empty_list_params
-  | `Multiple_lists_not_supported
-  | `Nested_list
-  | `Optional_list
-  | `Out_params_in_list
-  | `Unterminated_list
-  | `Unterminated_string
-  | `Unterminated_bracket
-  | `Escape_at_end
-  ]
-[@@deriving eq, show]
+(* type parse_error = *)
+(*   [ `Bad_identifier of string *)
+(*   | `Unknown_type_spec of string *)
+(*   | `Empty_list_params *)
+(*   | `Multiple_lists_not_supported *)
+(*   | `Nested_list *)
+(*   | `Optional_list *)
+(*   | `Out_params_in_list *)
+(*   | `Unterminated_list *)
+(*   | `Unterminated_string *)
+(*   | `Unterminated_bracket *)
+(*   | `Escape_at_end *)
+(*   ] *)
+(* [@@deriving eq, show] *)
 
-type conflicting_spec = [ `Conflicting_spec of string ] [@@deriving eq, show]
+(* type conflicting_spec = [ `Conflicting_spec of string ] [@@deriving eq, show] *)
 
 (** {1 TESTABLE modules} *)
 
 let param_mod = Alcotest.testable pp_param equal_param
 let parsed_query_mod = Alcotest.testable pp_parsed_query equal_parsed_query
-let parse_error_mod = Alcotest.testable pp_parse_error equal_parse_error
-let conflicting_spec_mod = Alcotest.testable pp_conflicting_spec equal_conflicting_spec
+let parse_error_mod = Alcotest.testable Base.Error.pp Base.Error.equal
+let conflicting_spec_mod = Alcotest.testable Base.Error.pp Base.Error.equal
 
 (** {1 Functions and values for {!test_parse_query}} *)
 
@@ -599,6 +599,7 @@ let parsed_query_list3 =
   }
 ;;
 
+let error_of e = Base.Or_error.error_string @@ Query.explain_error e
 let query_bad0 = "SELECT true FROM users WHERE id = %int{ID}"
 let error_bad0 = `Bad_identifier "ID"
 let query_bad1 = "SELECT @foo{id} FROM users"
@@ -657,21 +658,21 @@ let test_parse_query () =
   run "query_list1" query_list1 (Ok parsed_query_list1);
   run "query_list2" query_list2 (Ok parsed_query_list2);
   run "query_list3" query_list3 (Ok parsed_query_list3);
-  run "query_bad0" query_bad0 (Error error_bad0);
-  run "query_bad1" query_bad1 (Error error_bad1);
-  run "query_bad2" query_bad2 (Error error_bad2);
-  run "query_bad3" query_bad3 (Error error_bad3);
-  run "query_bad4" query_bad4 (Error error_bad4);
-  run "query_bad5" query_bad5 (Error error_bad5);
-  run "query_bad6" query_bad6 (Error error_bad6);
-  run "query_bad7" query_bad7 (Error error_bad7);
-  run "query_list_bad0" query_list_bad0 (Error error_list_bad0);
-  run "query_list_bad1" query_list_bad1 (Error error_list_bad1);
-  run "query_list_bad2" query_list_bad2 (Error error_list_bad2);
-  run "query_list_bad3" query_list_bad3 (Error error_list_bad3);
-  run "query_list_bad4" query_list_bad4 (Error error_list_bad4);
-  run "query_list_bad5" query_list_bad5 (Error error_list_bad5);
-  run "query_list_bad6" query_list_bad6 (Error error_list_bad6)
+  run "query_bad0" query_bad0 (error_of error_bad0);
+  run "query_bad1" query_bad1 (error_of error_bad1);
+  run "query_bad2" query_bad2 (error_of error_bad2);
+  run "query_bad3" query_bad3 (error_of error_bad3);
+  run "query_bad4" query_bad4 (error_of error_bad4);
+  run "query_bad5" query_bad5 (error_of error_bad5);
+  run "query_bad6" query_bad6 (error_of error_bad6);
+  run "query_bad7" query_bad7 (error_of error_bad7);
+  run "query_list_bad0" query_list_bad0 (error_of error_list_bad0);
+  run "query_list_bad1" query_list_bad1 (error_of error_list_bad1);
+  run "query_list_bad2" query_list_bad2 (error_of error_list_bad2);
+  run "query_list_bad3" query_list_bad3 (error_of error_list_bad3);
+  run "query_list_bad4" query_list_bad4 (error_of error_list_bad4);
+  run "query_list_bad5" query_list_bad5 (error_of error_list_bad5);
+  run "query_list_bad6" query_list_bad6 (error_of error_list_bad6)
 ;;
 
 (** {1 Functions and values for {!test_remove_duplicates}} *)
@@ -729,11 +730,11 @@ let test_remove_duplicates () =
   run
     "Redefined 'foo' with different type"
     [ param_foo32t; param_foo64t ]
-    (Error (`Conflicting_spec "foo"));
+    (error_of (`Conflicting_spec "foo"));
   run
     "Redefined 'foo' with different opt"
     [ param_foo32t; param_foo32f ]
-    (Error (`Conflicting_spec "foo"))
+    (error_of (`Conflicting_spec "foo"))
 ;;
 
 (** {1 Main} *)
