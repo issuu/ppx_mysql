@@ -60,7 +60,6 @@ let rec build_fun_chain ~loc expr = function
 ;;
 
 let build_in_param ~loc param =
-  (* Caml.Printf.printf "%s, opt:%b\n" param.Query.name param.opt; *)
   let to_string_mod, to_string_fun = Query.(param.to_string) in
   let to_string =
     Buildef.pexp_ident ~loc (Loc.make ~loc (Ldot (Lident to_string_mod, to_string_fun)))
@@ -177,17 +176,18 @@ let build_process_rows ~loc = function
       [%expr
         fun () ->
           let rec loop acc =
-            Prepared.fetch stmt_result
+            Ppx_mysql_runtime.Prepared.fetch stmt_result
             >>= fun maybe_row ->
             match acc, maybe_row with
             | [], Some row ->
               (match process_out_params row with
               | Result.Ok row' -> loop [ row' ]
-              | Result.Error _ as err -> IO.return err)
-            | [], None -> IO.return (Base.Or_error.error_string "Expected_one_found_none")
+              | Result.Error _ as err -> Async.return err)
+            | [], None ->
+              Async.return (Base.Or_error.error_string "Expected_one_found_none")
             | _ :: _, Some _ ->
-              IO.return (Base.Or_error.error_string "Expected_one_found_many")
-            | hd :: _, None -> IO.return (Result.Ok hd)
+              Async.return (Base.Or_error.error_string "Expected_one_found_many")
+            | hd :: _, None -> Async.return (Result.Ok hd)
           in
           loop []]
   | "select_opt" ->
@@ -195,17 +195,17 @@ let build_process_rows ~loc = function
       [%expr
         fun () ->
           let rec loop acc =
-            Prepared.fetch stmt_result
+            Ppx_mysql_runtime.Prepared.fetch stmt_result
             >>= fun maybe_row ->
             match acc, maybe_row with
             | [], Some row ->
               (match process_out_params row with
               | Result.Ok row' -> loop [ row' ]
-              | Result.Error _ as err -> IO.return err)
-            | [], None -> IO.return (Result.Ok None)
+              | Result.Error _ as err -> Async.return err)
+            | [], None -> Async.return (Result.Ok None)
             | _ :: _, Some _ ->
-              IO.return (Base.Or_error.error_string "Expected_maybe_one_found_many")
-            | hd :: _, None -> IO.return (Result.Ok (Some hd))
+              Async.return (Base.Or_error.error_string "Expected_maybe_one_found_many")
+            | hd :: _, None -> Async.return (Result.Ok (Some hd))
           in
           loop []]
   | "select_all" ->
@@ -213,23 +213,23 @@ let build_process_rows ~loc = function
       [%expr
         fun () ->
           let rec loop acc =
-            Prepared.fetch stmt_result
+            Ppx_mysql_runtime.Prepared.fetch stmt_result
             >>= function
             | Some row ->
               (match process_out_params row with
               | Result.Ok row' -> loop (row' :: acc)
-              | Result.Error _ as err -> IO.return err)
-            | None -> IO.return (Result.Ok (List.rev acc))
+              | Result.Error _ as err -> Async.return err)
+            | None -> Async.return (Result.Ok (Base.List.rev acc))
           in
           loop []]
   | "execute" ->
     Ok
       [%expr
         fun () ->
-          Prepared.fetch stmt_result
+          Ppx_mysql_runtime.Prepared.fetch stmt_result
           >>= function
-          | Some _ -> IO.return (Base.Or_error.error_string "Expected_none_found_one")
-          | None -> IO.return (Result.Ok ())]
+          | Some _ -> Async.return (Base.Or_error.error_string "Expected_none_found_one")
+          | None -> Async.return (Result.Ok ())]
   | etc -> Or_error.errorf "Unknown_query_action %s" etc
 ;;
 
@@ -237,8 +237,8 @@ let actually_expand ~loc query_action cached query =
   (* Caml.Printf.printf "\nquery:%s\n" query; *)
   let open Result in
   (match cached with
-  | None | Some "true" -> Ok [%expr Prepared.with_stmt_cached]
-  | Some "false" -> Ok [%expr Prepared.with_stmt_uncached]
+  | None | Some "true" -> Ok [%expr Ppx_mysql_runtime.Prepared.with_stmt_cached]
+  | Some "false" -> Ok [%expr Ppx_mysql_runtime.Prepared.with_stmt_uncached]
   | Some etc -> Or_error.errorf "Invalid_cached_parameter %s" etc)
   >>= fun with_stmt ->
   build_process_rows ~loc query_action
@@ -255,7 +255,7 @@ let actually_expand ~loc query_action cached query =
     let param_expr =
       Buildef.pexp_array ~loc @@ List.map ~f:(build_in_param ~loc) in_params
     in
-    Ok [%expr IO.return (Result.Ok ([%e sql_expr], [%e param_expr]))]
+    Ok [%expr Async.return (Result.Ok ([%e sql_expr], [%e param_expr]))]
   | Some { subsql; string_index; param_index; params } ->
     Query.remove_duplicates params
     >>= fun unique_params ->
@@ -282,34 +282,37 @@ let actually_expand ~loc query_action cached query =
     Ok
       [%expr
         match [%e elems_ident] with
-        | [] -> IO.return @@ Base.Or_error.error_string "Empty_input_list"
+        | [] -> Async.return @@ Base.Or_error.error_string "Empty_input_list"
         | elems ->
-          let subsqls = List.map ~f:(fun _ -> [%e subsql_expr]) elems in
+          let subsqls = Base.List.map ~f:(fun _ -> [%e subsql_expr]) elems in
           let patch = String.concat ~sep:", " subsqls in
           let sql = String.([%e sql_before] ^ patch ^ [%e sql_after]) in
           let params_between =
-            Array.of_list
-              (List.concat
-                 (List.map ~f:(fun [%p list_params_decl] -> [%e list_params_conv]) elems))
+            Base.Array.of_list
+              (Base.List.concat
+                 (Base.List.map
+                    ~f:(fun [%p list_params_decl] -> [%e list_params_conv])
+                    elems))
           in
           let params =
-            Array.concat [ [%e params_before]; params_between; [%e params_after] ]
+            Base.Array.concat [ [%e params_before]; params_between; [%e params_after] ]
           in
-          IO.return (Result.Ok (sql, params))])
+          Async.return (Result.Ok (sql, params))])
   >>= fun setup_expr ->
   (* Note that in the expr fragment below we disable warning 26 (about unused variables)
      for the 'process_out_params' function, since it may indeed be unused if there are
      no output parameters. *)
   let expr =
     [%expr
-      let open IO_result in
+      let open Async.Deferred.Or_error in
       [%e setup_expr]
       >>= fun (sql, params) ->
       let[@warning "-26"] process_out_params =
         [%e build_out_param_processor ~loc out_params]
       in
       [%e with_stmt] [%e dbh_ident] sql (fun stmt ->
-          Prepared.execute_null stmt params >>= fun stmt_result -> [%e process_rows] ())]
+          Ppx_mysql_runtime.Prepared.execute_null stmt params
+          >>= fun stmt_result -> [%e process_rows] ())]
   in
   let chain = build_fun_chain ~loc expr unique_in_params in
   let chain =
@@ -323,7 +326,8 @@ let actually_expand ~loc query_action cached query =
 let expand ~loc ~path:_ query_action cached query =
   match actually_expand ~loc query_action cached query with
   | Ok expr ->
-    (* Pprintast.expression Caml.Format.std_formatter expr; *)
+    Caml.Printf.printf "\n\n%s\n" query;
+    Pprintast.expression Caml.Format.std_formatter expr;
     expr
   | Error err ->
     let msg = Error.to_string_hum err in

@@ -12,7 +12,6 @@
 
 open Core
 open Async
-open Mysql_with_async
 
 let stdout = Lazy.force Writer.stdout
 
@@ -64,6 +63,83 @@ let get_some_users dbh ids =
     ids
   >>| List.map ~f:user_of_tuple
 ;;
+
+;;
+fun dbh elems ->
+  let open Async.Deferred.Or_error in
+  (match elems with
+  | [] -> Async.return @@ Base.Or_error.error_string "Empty_input_list"
+  | elems ->
+    let subsqls = Base.List.map ~f:(fun _ -> "?") elems in
+    let patch = String.concat ~sep:", " subsqls in
+    let sql =
+      let open String in
+      "SELECT id, name, phone FROM users WHERE id IN (" ^ patch ^ ")"
+    in
+    let params_between =
+      Array.of_list
+        (Base.List.concat
+           (Base.List.map ~f:(fun id -> [ Base.Option.Some (Int32.to_string id) ]) elems))
+    in
+    let params = Array.concat [ [||]; params_between; [||] ] in
+    Async.return (Result.Ok (sql, params)))
+  >>= fun (sql, params) ->
+  let process_out_params row =
+    let len_row = Array.length row in
+    if Base.( = ) len_row 3
+    then (
+      let err_accum = [] in
+      let col0, err_accum =
+        Ppx_mysql_runtime.deserialize_non_nullable_column
+          0
+          "id"
+          Ppx_mysql_runtime.int32_of_string
+          "Ppx_mysql_runtime.int32_of_string"
+          err_accum
+          row.(0)
+      in
+      let col1, err_accum =
+        Ppx_mysql_runtime.deserialize_non_nullable_column
+          1
+          "name"
+          Ppx_mysql_runtime.string_of_string
+          "Ppx_mysql_runtime.string_of_string"
+          err_accum
+          row.(1)
+      in
+      let col2, err_accum =
+        Ppx_mysql_runtime.deserialize_nullable_column
+          2
+          "phone"
+          Ppx_mysql_runtime.string_of_string
+          "Ppx_mysql_runtime.string_of_string"
+          err_accum
+          row.(2)
+      in
+      match col0, col1, col2 with
+      | Base.Option.Some v0, Base.Option.Some v1, Base.Option.Some v2 ->
+        Result.Ok (v0, v1, v2)
+      | _ -> Base.Or_error.error_s @@ Ppx_mysql_runtime.sexp_of_column_errors err_accum)
+    else
+      Base.Or_error.error_s
+      @@ Ppx_mysql_runtime.sexp_of_unexpected_number_of_columns (len_row, 3)
+    [@@warning "-26"]
+  in
+  Ppx_mysql_runtime.Prepared.with_stmt_cached dbh sql (fun stmt ->
+      Ppx_mysql_runtime.Prepared.execute_null stmt params
+      >>= fun stmt_result ->
+      (fun () ->
+        let rec loop acc =
+          Ppx_mysql_runtime.Prepared.fetch stmt_result
+          >>= function
+          | Some row ->
+            (match process_out_params row with
+            | Result.Ok row' -> loop (row' :: acc)
+            | Result.Error _ as err -> Async.return err)
+          | None -> Async.return (Result.Ok (Base.List.rev acc))
+        in
+        loop [])
+        ())
 
 let get_user dbh ~id =
   let open Deferred.Result in
@@ -147,7 +223,7 @@ let test dbh =
 let main () =
   let open Deferred.Infix in
   let dbh = Mysql.quick_connect ~database:"test" ~user:"root" () in
-  let wrapped_dbh = Prepared.init dbh in
+  let wrapped_dbh = Ppx_mysql_runtime.Prepared.init dbh in
   test wrapped_dbh
   >>= fun res ->
   Mysql.disconnect dbh;

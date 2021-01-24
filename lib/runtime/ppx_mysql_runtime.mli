@@ -1,4 +1,5 @@
 open Base
+open Async
 
 type deserialization_error =
   { idx : int
@@ -52,66 +53,27 @@ module type SERIALIZABLE = sig
   val to_string : t -> string
 end
 
-module type PPX_MYSQL_CONTEXT_ARG = sig
-  module IO : sig
-    type 'a t
+module Prepared : sig
+  type wrapped_dbh
 
-    val return : 'a -> 'a t
-    val bind : 'a t -> ('a -> 'b t) -> 'b t
-  end
+  val init : Mysql.dbd -> wrapped_dbh
 
-  module Prepared : sig
-    type dbh
-    type stmt
-    type stmt_result
+  val execute_null
+    :  Mysql.Prepared.stmt
+    -> string option array
+    -> Mysql.Prepared.stmt_result Deferred.Or_error.t
 
-    val create : dbh -> string -> stmt Base.Or_error.t IO.t
-    val close : stmt -> unit Base.Or_error.t IO.t
-    val execute_null : stmt -> string option array -> stmt_result Base.Or_error.t IO.t
-    val fetch : stmt_result -> string option array option Base.Or_error.t IO.t
-  end
+  val fetch : Mysql.Prepared.stmt_result -> string option array option Deferred.Or_error.t
+
+  val with_stmt_cached
+    :  wrapped_dbh
+    -> string
+    -> (Mysql.Prepared.stmt -> 'a Deferred.Or_error.t)
+    -> 'a Deferred.Or_error.t
+
+  val with_stmt_uncached
+    :  wrapped_dbh
+    -> string
+    -> (Mysql.Prepared.stmt -> 'a Deferred.Or_error.t)
+    -> 'a Deferred.Or_error.t
 end
-
-module type PPX_MYSQL_CONTEXT = sig
-  module IO : sig
-    type 'a t
-
-    val return : 'a -> 'a t
-    val bind : 'a t -> ('a -> 'b t) -> 'b t
-    val ( >>= ) : 'a t -> ('a -> 'b t) -> 'b t
-  end
-
-  module IO_result : sig
-    type ('a, 'e) t = ('a, 'e) Result.t IO.t
-
-    val return : 'a -> ('a, 'e) t
-    val bind : ('a, 'e) t -> ('a -> ('b, 'e) t) -> ('b, 'e) t
-    val ( >>= ) : ('a, 'e) t -> ('a -> ('b, 'e) t) -> ('b, 'e) t
-  end
-
-  module Prepared : sig
-    type dbh
-    type stmt
-    type stmt_result
-    type wrapped_dbh
-
-    val init : dbh -> wrapped_dbh
-    val execute_null : stmt -> string option array -> stmt_result Base.Or_error.t IO.t
-    val fetch : stmt_result -> string option array option Base.Or_error.t IO.t
-
-    val with_stmt_cached
-      :  wrapped_dbh
-      -> string
-      -> (stmt -> 'a Base.Or_error.t IO.t)
-      -> 'a Base.Or_error.t IO.t
-
-    val with_stmt_uncached
-      :  wrapped_dbh
-      -> string
-      -> (stmt -> 'a Base.Or_error.t IO.t)
-      -> 'a Base.Or_error.t IO.t
-  end
-end
-
-module Make_context (M : PPX_MYSQL_CONTEXT_ARG) :
-  PPX_MYSQL_CONTEXT with type 'a IO.t = 'a M.IO.t and type Prepared.dbh = M.Prepared.dbh
