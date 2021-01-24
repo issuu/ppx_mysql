@@ -27,23 +27,6 @@ type parsed_query = Query.parsed_query =
   }
 [@@deriving eq, show]
 
-(* type parse_error = *)
-(*   [ `Bad_identifier of string *)
-(*   | `Unknown_type_spec of string *)
-(*   | `Empty_list_params *)
-(*   | `Multiple_lists_not_supported *)
-(*   | `Nested_list *)
-(*   | `Optional_list *)
-(*   | `Out_params_in_list *)
-(*   | `Unterminated_list *)
-(*   | `Unterminated_string *)
-(*   | `Unterminated_bracket *)
-(*   | `Escape_at_end *)
-(*   ] *)
-(* [@@deriving eq, show] *)
-
-(* type conflicting_spec = [ `Conflicting_spec of string ] [@@deriving eq, show] *)
-
 (** {1 TESTABLE modules} *)
 
 let param_mod = Alcotest.testable pp_param equal_param
