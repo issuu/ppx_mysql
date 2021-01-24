@@ -106,7 +106,7 @@ let test_pair_output_params dbh =
           row.(1)
       in
       match col0, col1 with
-      | Some v0, Some v1 -> Result.Ok (v0, v1)
+      | Base.Option.Some v0, Base.Option.Some v1 -> Result.Ok (v0, v1)
       | _ -> Base.Or_error.error_s @@ Ppx_mysql_runtime.sexp_of_column_errors err_accum)
     else
       Base.Or_error.error_s
@@ -138,7 +138,8 @@ let test_one_input_params dbh ~(id : int) =
   let open IO_result in
   IO.return
     (Result.Ok
-       ("SELECT name FROM users WHERE id = ?", [| Some (Stdlib.string_of_int id) |]))
+       ( "SELECT name FROM users WHERE id = ?"
+       , [| Base.Option.Some (Stdlib.string_of_int id) |] ))
   >>= fun (sql, params) ->
   let process_out_params row =
     let len_row = Array.length row in
@@ -187,7 +188,9 @@ let test_two_input_pair_output_params dbh ~(id : int) ~(name : string) =
   IO.return
     (Result.Ok
        ( "SELECT id, name FROM users WHERE id = ? OR name = ?"
-       , [| Some (Stdlib.string_of_int id); Some (Ppx_mysql_runtime.identity name) |] ))
+       , [| Base.Option.Some (Stdlib.string_of_int id)
+          ; Base.Option.Some (Ppx_mysql_runtime.identity name)
+         |] ))
   >>= fun (sql, params) ->
   let process_out_params row =
     let len_row = Array.length row in
@@ -213,7 +216,7 @@ let test_two_input_pair_output_params dbh ~(id : int) ~(name : string) =
           row.(1)
       in
       match col0, col1 with
-      | Some v0, Some v1 -> Result.Ok (v0, v1)
+      | Base.Option.Some v0, Base.Option.Some v1 -> Result.Ok (v0, v1)
       | _ -> Base.Or_error.error_s @@ Ppx_mysql_runtime.sexp_of_column_errors err_accum)
     else
       Base.Or_error.error_s
@@ -269,7 +272,7 @@ let test_select_all dbh =
           row.(1)
       in
       match col0, col1 with
-      | Some v0, Some v1 -> Result.Ok (v0, v1)
+      | Base.Option.Some v0, Base.Option.Some v1 -> Result.Ok (v0, v1)
       | _ -> Base.Or_error.error_s @@ Ppx_mysql_runtime.sexp_of_column_errors err_accum)
     else
       Base.Or_error.error_s
@@ -298,7 +301,9 @@ let test_repeated_input_params dbh ~(id : int) =
   IO.return
     (Result.Ok
        ( "SELECT id, name FROM users WHERE id <> ? AND id <> ?"
-       , [| Some (Stdlib.string_of_int id); Some (Stdlib.string_of_int id) |] ))
+       , [| Base.Option.Some (Stdlib.string_of_int id)
+          ; Base.Option.Some (Stdlib.string_of_int id)
+         |] ))
   >>= fun (sql, params) ->
   let process_out_params row =
     let len_row = Array.length row in
@@ -324,7 +329,7 @@ let test_repeated_input_params dbh ~(id : int) =
           row.(1)
       in
       match col0, col1 with
-      | Some v0, Some v1 -> Result.Ok (v0, v1)
+      | Base.Option.Some v0, Base.Option.Some v1 -> Result.Ok (v0, v1)
       | _ -> Base.Or_error.error_s @@ Ppx_mysql_runtime.sexp_of_column_errors err_accum)
     else
       Base.Or_error.error_s
@@ -352,7 +357,8 @@ let test_select_opt dbh ~(id : int) =
   let open IO_result in
   IO.return
     (Result.Ok
-       ("SELECT id, name FROM users WHERE id = ?", [| Some (Stdlib.string_of_int id) |]))
+       ( "SELECT id, name FROM users WHERE id = ?"
+       , [| Base.Option.Some (Stdlib.string_of_int id) |] ))
   >>= fun (sql, params) ->
   let process_out_params row =
     let len_row = Array.length row in
@@ -378,7 +384,7 @@ let test_select_opt dbh ~(id : int) =
           row.(1)
       in
       match col0, col1 with
-      | Some v0, Some v1 -> Result.Ok (v0, v1)
+      | Base.Option.Some v0, Base.Option.Some v1 -> Result.Ok (v0, v1)
       | _ -> Base.Or_error.error_s @@ Ppx_mysql_runtime.sexp_of_column_errors err_accum)
     else
       Base.Or_error.error_s
@@ -409,7 +415,8 @@ let test_select_opt dbh ~(id : int) =
 let test_execute dbh ~(id : int) =
   let open IO_result in
   IO.return
-    (Result.Ok ("DELETE FROM users WHERE id = ?", [| Some (Stdlib.string_of_int id) |]))
+    (Result.Ok
+       ("DELETE FROM users WHERE id = ?", [| Base.Option.Some (Stdlib.string_of_int id) |]))
   >>= fun (sql, params) ->
   let process_out_params row =
     let len_row = Array.length row in
@@ -436,7 +443,9 @@ let test_int dbh ~(a : int) ~(b : int option) =
   IO.return
     (Result.Ok
        ( "SELECT a, b FROM users where a = ? OR b = ?"
-       , [| Some (Stdlib.string_of_int a); (Option.map Stdlib.string_of_int) b |] ))
+       , [| Base.Option.Some (Stdlib.string_of_int a)
+          ; (Base.Option.map ~f:Stdlib.string_of_int) b
+         |] ))
   >>= fun (sql, params) ->
   let process_out_params row =
     let len_row = Array.length row in
@@ -462,7 +471,7 @@ let test_int dbh ~(a : int) ~(b : int option) =
           row.(1)
       in
       match col0, col1 with
-      | Some v0, Some v1 -> Result.Ok (v0, v1)
+      | Base.Option.Some v0, Base.Option.Some v1 -> Result.Ok (v0, v1)
       | _ -> Base.Or_error.error_s @@ Ppx_mysql_runtime.sexp_of_column_errors err_accum)
     else
       Base.Or_error.error_s
@@ -495,7 +504,9 @@ let test_int32 dbh ~(a : int32) ~(b : int32 option) =
   IO.return
     (Result.Ok
        ( "SELECT a, b FROM users where a = ? OR b = ?"
-       , [| Some (Int32.to_string a); (Option.map Int32.to_string) b |] ))
+       , [| Base.Option.Some (Int32.to_string a)
+          ; (Base.Option.map ~f:Int32.to_string) b
+         |] ))
   >>= fun (sql, params) ->
   let process_out_params row =
     let len_row = Array.length row in
@@ -521,7 +532,7 @@ let test_int32 dbh ~(a : int32) ~(b : int32 option) =
           row.(1)
       in
       match col0, col1 with
-      | Some v0, Some v1 -> Result.Ok (v0, v1)
+      | Base.Option.Some v0, Base.Option.Some v1 -> Result.Ok (v0, v1)
       | _ -> Base.Or_error.error_s @@ Ppx_mysql_runtime.sexp_of_column_errors err_accum)
     else
       Base.Or_error.error_s
@@ -554,7 +565,9 @@ let test_int64 dbh ~(a : int64) ~(b : int64 option) =
   IO.return
     (Result.Ok
        ( "SELECT a, b FROM users where a = ? OR b = ?"
-       , [| Some (Int64.to_string a); (Option.map Int64.to_string) b |] ))
+       , [| Base.Option.Some (Int64.to_string a)
+          ; (Base.Option.map ~f:Int64.to_string) b
+         |] ))
   >>= fun (sql, params) ->
   let process_out_params row =
     let len_row = Array.length row in
@@ -580,7 +593,7 @@ let test_int64 dbh ~(a : int64) ~(b : int64 option) =
           row.(1)
       in
       match col0, col1 with
-      | Some v0, Some v1 -> Result.Ok (v0, v1)
+      | Base.Option.Some v0, Base.Option.Some v1 -> Result.Ok (v0, v1)
       | _ -> Base.Or_error.error_s @@ Ppx_mysql_runtime.sexp_of_column_errors err_accum)
     else
       Base.Or_error.error_s
@@ -613,7 +626,9 @@ let test_bool dbh ~(a : bool) ~(b : bool option) =
   IO.return
     (Result.Ok
        ( "SELECT a, b FROM users where a = ? OR b = ?"
-       , [| Some (Stdlib.string_of_bool a); (Option.map Stdlib.string_of_bool) b |] ))
+       , [| Base.Option.Some (Stdlib.string_of_bool a)
+          ; (Base.Option.map ~f:Stdlib.string_of_bool) b
+         |] ))
   >>= fun (sql, params) ->
   let process_out_params row =
     let len_row = Array.length row in
@@ -639,7 +654,7 @@ let test_bool dbh ~(a : bool) ~(b : bool option) =
           row.(1)
       in
       match col0, col1 with
-      | Some v0, Some v1 -> Result.Ok (v0, v1)
+      | Base.Option.Some v0, Base.Option.Some v1 -> Result.Ok (v0, v1)
       | _ -> Base.Or_error.error_s @@ Ppx_mysql_runtime.sexp_of_column_errors err_accum)
     else
       Base.Or_error.error_s
@@ -672,8 +687,8 @@ let test_string dbh ~(a : string) ~(b : string option) =
   IO.return
     (Result.Ok
        ( "SELECT a, b FROM users where a = ? OR b = ?"
-       , [| Some (Ppx_mysql_runtime.identity a)
-          ; (Option.map Ppx_mysql_runtime.identity) b
+       , [| Base.Option.Some (Ppx_mysql_runtime.identity a)
+          ; (Base.Option.map ~f:Ppx_mysql_runtime.identity) b
          |] ))
   >>= fun (sql, params) ->
   let process_out_params row =
@@ -700,7 +715,7 @@ let test_string dbh ~(a : string) ~(b : string option) =
           row.(1)
       in
       match col0, col1 with
-      | Some v0, Some v1 -> Result.Ok (v0, v1)
+      | Base.Option.Some v0, Base.Option.Some v1 -> Result.Ok (v0, v1)
       | _ -> Base.Or_error.error_s @@ Ppx_mysql_runtime.sexp_of_column_errors err_accum)
     else
       Base.Or_error.error_s
@@ -733,7 +748,8 @@ let test_custom_type dbh ~(a : Id.t) ~(b : Phone.t option) =
   IO.return
     (Result.Ok
        ( "SELECT a, b FROM users where a = ? OR b = ?"
-       , [| Some (Id.to_string a); (Option.map Phone.to_string) b |] ))
+       , [| Base.Option.Some (Id.to_string a); (Base.Option.map ~f:Phone.to_string) b |]
+       ))
   >>= fun (sql, params) ->
   let process_out_params row =
     let len_row = Array.length row in
@@ -759,7 +775,7 @@ let test_custom_type dbh ~(a : Id.t) ~(b : Phone.t option) =
           row.(1)
       in
       match col0, col1 with
-      | Some v0, Some v1 -> Result.Ok (v0, v1)
+      | Base.Option.Some v0, Base.Option.Some v1 -> Result.Ok (v0, v1)
       | _ -> Base.Or_error.error_s @@ Ppx_mysql_runtime.sexp_of_column_errors err_accum)
     else
       Base.Or_error.error_s
@@ -800,7 +816,8 @@ let test_list0 dbh elems =
     in
     let params_between =
       Array.of_list
-        (List.concat (List.map ~f:(fun id -> [ Some (Stdlib.string_of_int id) ]) elems))
+        (List.concat
+           (List.map ~f:(fun id -> [ Base.Option.Some (Stdlib.string_of_int id) ]) elems))
     in
     let params = Array.concat [ [||]; params_between; [||] ] in
     IO.return (Result.Ok (sql, params)))
@@ -829,7 +846,7 @@ let test_list0 dbh elems =
           row.(1)
       in
       match col0, col1 with
-      | Some v0, Some v1 -> Result.Ok (v0, v1)
+      | Base.Option.Some v0, Base.Option.Some v1 -> Result.Ok (v0, v1)
       | _ -> Base.Or_error.error_s @@ Ppx_mysql_runtime.sexp_of_column_errors err_accum)
     else
       Base.Or_error.error_s
@@ -869,7 +886,9 @@ let test_list1 dbh elems =
         (List.concat
            (List.map
               ~f:(fun (id, name) ->
-                [ Some (Stdlib.string_of_int id); Some (Ppx_mysql_runtime.identity name) ])
+                [ Base.Option.Some (Stdlib.string_of_int id)
+                ; Base.Option.Some (Ppx_mysql_runtime.identity name)
+                ])
               elems))
     in
     let params = Array.concat [ [||]; params_between; [||] ] in
@@ -908,13 +927,14 @@ let test_list2 dbh elems ~(name : string) ~(age : int) =
     in
     let params_between =
       Array.of_list
-        (List.concat (List.map ~f:(fun id -> [ Some (Stdlib.string_of_int id) ]) elems))
+        (List.concat
+           (List.map ~f:(fun id -> [ Base.Option.Some (Stdlib.string_of_int id) ]) elems))
     in
     let params =
       Array.concat
-        [ [| Some (Ppx_mysql_runtime.identity name) |]
+        [ [| Base.Option.Some (Ppx_mysql_runtime.identity name) |]
         ; params_between
-        ; [| Some (Stdlib.string_of_int age) |]
+        ; [| Base.Option.Some (Stdlib.string_of_int age) |]
         ]
     in
     IO.return (Result.Ok (sql, params)))
@@ -943,7 +963,7 @@ let test_list2 dbh elems ~(name : string) ~(age : int) =
           row.(1)
       in
       match col0, col1 with
-      | Some v0, Some v1 -> Result.Ok (v0, v1)
+      | Base.Option.Some v0, Base.Option.Some v1 -> Result.Ok (v0, v1)
       | _ -> Base.Or_error.error_s @@ Ppx_mysql_runtime.sexp_of_column_errors err_accum)
     else
       Base.Or_error.error_s
@@ -983,10 +1003,10 @@ let test_list3 dbh elems =
         (List.concat
            (List.map
               ~f:(fun (id, name, age) ->
-                [ Some (Stdlib.string_of_int id)
-                ; Some (Ppx_mysql_runtime.identity name)
-                ; Some (Ppx_mysql_runtime.identity name)
-                ; Some (Stdlib.string_of_int age)
+                [ Base.Option.Some (Stdlib.string_of_int id)
+                ; Base.Option.Some (Ppx_mysql_runtime.identity name)
+                ; Base.Option.Some (Ppx_mysql_runtime.identity name)
+                ; Base.Option.Some (Stdlib.string_of_int age)
                 ])
               elems))
     in
@@ -1026,7 +1046,8 @@ let test_cached0 dbh elems =
     in
     let params_between =
       Array.of_list
-        (List.concat (List.map ~f:(fun id -> [ Some (Stdlib.string_of_int id) ]) elems))
+        (List.concat
+           (List.map ~f:(fun id -> [ Base.Option.Some (Stdlib.string_of_int id) ]) elems))
     in
     let params = Array.concat [ [||]; params_between; [||] ] in
     IO.return (Result.Ok (sql, params)))
@@ -1055,7 +1076,7 @@ let test_cached0 dbh elems =
           row.(1)
       in
       match col0, col1 with
-      | Some v0, Some v1 -> Result.Ok (v0, v1)
+      | Base.Option.Some v0, Base.Option.Some v1 -> Result.Ok (v0, v1)
       | _ -> Base.Or_error.error_s @@ Ppx_mysql_runtime.sexp_of_column_errors err_accum)
     else
       Base.Or_error.error_s
@@ -1092,7 +1113,8 @@ let test_cached1 dbh elems =
     in
     let params_between =
       Array.of_list
-        (List.concat (List.map ~f:(fun id -> [ Some (Stdlib.string_of_int id) ]) elems))
+        (List.concat
+           (List.map ~f:(fun id -> [ Base.Option.Some (Stdlib.string_of_int id) ]) elems))
     in
     let params = Array.concat [ [||]; params_between; [||] ] in
     IO.return (Result.Ok (sql, params)))
@@ -1121,7 +1143,7 @@ let test_cached1 dbh elems =
           row.(1)
       in
       match col0, col1 with
-      | Some v0, Some v1 -> Result.Ok (v0, v1)
+      | Base.Option.Some v0, Base.Option.Some v1 -> Result.Ok (v0, v1)
       | _ -> Base.Or_error.error_s @@ Ppx_mysql_runtime.sexp_of_column_errors err_accum)
     else
       Base.Or_error.error_s

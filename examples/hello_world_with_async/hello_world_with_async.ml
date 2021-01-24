@@ -75,6 +75,17 @@ let get_user dbh ~id =
   >>| user_of_tuple
 ;;
 
+let get_user_opt dbh ~id =
+  let open Deferred.Result in
+  let f =
+    [%mysql
+      select_one
+        "SELECT @int32{id}, @string{name}, @string?{phone} FROM users WHERE id = \
+         %int32?{id}"]
+  in
+  f dbh ~id >>| user_of_tuple
+;;
+
 let insert_user =
   [%mysql
     execute

@@ -46,8 +46,8 @@ let rec build_fun_chain ~loc expr = function
     let var = ppat_var ~loc (Loc.make ~loc name) in
     let basetyp =
       match typ with
-      | None, typ -> ptyp_constr ~loc (Loc.make ~loc (Lident typ)) []
-      | Some module_name, typ ->
+      | Option.None, typ -> ptyp_constr ~loc (Loc.make ~loc (Lident typ)) []
+      | Option.Some module_name, typ ->
         ptyp_constr ~loc (Loc.make ~loc (Ldot (Lident module_name, typ))) []
     in
     let fulltyp =
@@ -56,18 +56,19 @@ let rec build_fun_chain ~loc expr = function
       | false -> basetyp
     in
     let pat = ppat_constraint ~loc var fulltyp in
-    pexp_fun ~loc (Labelled name) None pat tl'
+    pexp_fun ~loc (Labelled name) Option.None pat tl'
 ;;
 
 let build_in_param ~loc param =
+  (* Caml.Printf.printf "%s, opt:%b\n" param.Query.name param.opt; *)
   let to_string_mod, to_string_fun = Query.(param.to_string) in
   let to_string =
     Buildef.pexp_ident ~loc (Loc.make ~loc (Ldot (Lident to_string_mod, to_string_fun)))
   in
   let arg = Buildef.pexp_ident ~loc (Loc.make ~loc (Lident param.name)) in
   match param.opt with
-  | true -> [%expr (Option.map [%e to_string]) [%e arg]]
-  | false -> [%expr Option.(Some ([%e to_string] [%e arg]))]
+  | true -> [%expr (Base.Option.map ~f:[%e to_string]) [%e arg]]
+  | false -> [%expr Base.Option.Some ([%e to_string] [%e arg])]
 ;;
 
 let make_column_expr ~loc i param =
@@ -124,7 +125,7 @@ let build_out_param_processor ~loc out_params =
           let lhs =
             Buildef.ppat_tuple ~loc
             @@ List.init len_out_params ~f:(fun i ->
-                   [%pat? Some [%p make_ident_pat "v" i]])
+                   [%pat? Base.Option.Some [%p make_ident_pat "v" i]])
           in
           let rhs =
             let tuple =
@@ -233,6 +234,7 @@ let build_process_rows ~loc = function
 ;;
 
 let actually_expand ~loc query_action cached query =
+  (* Caml.Printf.printf "\nquery:%s\n" query; *)
   let open Result in
   (match cached with
   | None | Some "true" -> Ok [%expr Prepared.with_stmt_cached]
@@ -320,7 +322,9 @@ let actually_expand ~loc query_action cached query =
 
 let expand ~loc ~path:_ query_action cached query =
   match actually_expand ~loc query_action cached query with
-  | Ok expr -> expr
+  | Ok expr ->
+    (* Pprintast.expression Caml.Format.std_formatter expr; *)
+    expr
   | Error err ->
     let msg = Error.to_string_hum err in
     raise
